@@ -1,4 +1,4 @@
-# GTH ID Streamlit Dashboard
+# Strive Streamlit Dashboard
 
 A comprehensive, role‑based analytics dashboard built with Streamlit, designed to integrate seamlessly into the Strive Ionic application. This project provides three administrator views (National, PTSO, and Club) and four detail views (Club, Coach, Skier, Parent), all powered by a PostgreSQL backend.
 
