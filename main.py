@@ -1,32 +1,23 @@
 import streamlit as st
-from utils.auth import get_current_user
 
-PAGES = {
-    "national": "pages.national_dashboard",
-    "ptso":     "pages.ptso_dashboard",
-    "club":     "pages.club_dashboard",   # ← make sure this line exists
-}
+# ─── Global page config ──────────────────────────────────
+st.set_page_config(
+    page_title="Strive Dashboard",
+    page_icon="🏔️",
+    layout="wide"
+)
 
-def main():
-    st.set_page_config(layout="wide")
-    user = get_current_user()
-    if not user:
-        st.error("Please log in.")
-        return
+# ─── Sidebar Branding ───────────────────────────────────
+st.sidebar.image("Alpine_Canada_logo.svg.png", use_container_width=True)
+st.sidebar.markdown("## Welcome to Strive Dashboard")
 
-    role = user["role"]
-    if role == "aca":
-        module = PAGES["national"]
-    elif role == "ptso":
-        module = PAGES["ptso"]
-    elif role == "club_admin":
-        module = PAGES["club"]
-    else:
-        st.error("Unauthorized role.")
-        return
-
-    page = __import__(module, fromlist=["app"])
-    page.app()
-
-if __name__ == "__main__":
-    main()
+# ─── Welcome Message ────────────────────────────────────
+st.title("🏔️ Strive Dashboard")
+st.write(
+    """
+    Use the **Pages** menu in the top-left corner to navigate:
+    - National Dashboard  
+    - PTSO Dashboard  
+    - Club Dashboard  
+    """
+)

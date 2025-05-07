@@ -1,4 +1,12 @@
 from sqlalchemy import text
+
+import os, sys
+#  ─── Bring the project root into Python’s import path ─────────
+sys.path.insert(
+    0,
+    os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
+
 from utils.db import engine
 
 # Season-aware summary view definition
