@@ -6,7 +6,8 @@ import plotly.express as px
 import base64
 from utils.db import engine
 import pyecharts.options as opts
-from pyecharts.charts import Pie
+from pyecharts.charts import Pie, Bar
+
 from streamlit.components.v1 import html   # built‑in
 
 # ─── Page config ───────────────────────────────────────────
@@ -110,8 +111,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ─── 2) Skier level distribution pie ───────────────────────
-# ─── Skier level distribution via pyecharts ───────────────
+# First, query both data sets
 sql_dist = """
 SELECT level_name, skier_count
 FROM public.vw_skier_level_distribution_by_season
@@ -120,41 +120,80 @@ ORDER BY level_id;
 """
 df_dist = pd.read_sql(sql_dist, engine, params={"season": season})
 
-st.subheader("Skier Level Distribution")
-if df_dist.empty:
-    st.info("No level‑distribution data for this season.")
-else:
-    data_pairs = df_dist.values.tolist()   # [[name, count], …]
+sql_eval = """
+SELECT level_name, eval_count
+FROM public.vw_evaluations_by_level_by_season
+WHERE season = %(season)s
+ORDER BY level_id;
+"""
+df_eval = pd.read_sql(sql_eval, engine, params={"season": season})
 
-    pie = (
-        Pie(init_opts=opts.InitOpts(bg_color="#111111"))  # match dark bg
-        .add(
-            series_name="",
-            data_pair=data_pairs,
-            radius=["40%", "70%"],          # donut
-        )
-        .set_global_opts(
-            legend_opts=opts.LegendOpts(
-                orient="vertical",
-                pos_left="left",
-                textstyle_opts=opts.TextStyleOpts(color="#ffffff")  # legend text white
-            ),
-            # remove default title padding so no extra top margin
-            title_opts=opts.TitleOpts(title="")
-        )
-        .set_series_opts(
-            label_opts=opts.LabelOpts(
-                formatter="{b}: {c}",
-                color="#ffffff"              # label text white
+# Create two columns
+col_pie, col_bar = st.columns(2, gap="large")
+
+# ─── Pie in left column ───────────────────────────────────
+with col_pie:
+    st.subheader("Skier Level Distribution")
+    if df_dist.empty:
+        st.info("No level-distribution data for this season.")
+    else:
+        data_pairs = df_dist.values.tolist()
+        pie = (
+            Pie(init_opts=opts.InitOpts(bg_color="#111111"))
+            .add("", data_pairs, radius=["40%", "70%"])
+            .set_global_opts(
+                legend_opts=opts.LegendOpts(
+                    orient="vertical",
+                    pos_left="left",
+                    textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+                ),
+                title_opts=opts.TitleOpts(title="")
+            )
+            .set_series_opts(
+                label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
             )
         )
-    )
+        html(pie.render_embed(), height=450, width=None, scrolling=False)
 
-    chart_html = pie.render_embed()
-    # height 450px, width auto; no scroll; enough bottom margin
-    html(
-        chart_html,
-        height=450,
-        width=None,
-        scrolling=False
-    )
+# ─── Bar in right column ──────────────────────────────────
+with col_bar:
+    st.subheader("Evaluations by Levels")
+    if df_eval.empty:
+        st.info("No evaluations data for this season.")
+    else:
+        bar = (
+            Bar(init_opts=opts.InitOpts(bg_color="#111111"))
+            .add_xaxis(df_eval["level_name"].tolist())
+            .add_yaxis(
+                series_name="Evaluations",
+                y_axis=df_eval["eval_count"].tolist(),
+                category_gap="35%",
+                color="#CD5C5C"
+            )
+            .set_global_opts(
+                yaxis_opts=opts.AxisOpts(
+                    name="Count",
+                    axislabel_opts=opts.LabelOpts(color="#ffffff")
+                ),
+                xaxis_opts=opts.AxisOpts(
+                    axislabel_opts=opts.LabelOpts(color="#ffffff")
+                ),
+                legend_opts=opts.LegendOpts(
+                    textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+                ),
+                toolbox_opts=opts.ToolboxOpts(
+                    orient="horizontal",
+                    item_size=18,
+                    item_gap=8,
+                    feature={
+                        "saveAsImage": {"title": "save as image"},
+                        "restore":     {"title": "restore"},
+                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
+                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
+                        "magicType":   {"type": ["line", "bar"], "title": {"line": "line chart", "bar": "bar chart"}}
+                    }
+                ),
+                title_opts=opts.TitleOpts(title="")
+            )
+        )
+        html(bar.render_embed(), height=500, width=None, scrolling=False)
