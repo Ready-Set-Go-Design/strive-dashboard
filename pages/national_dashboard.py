@@ -7,8 +7,7 @@ import base64
 from utils.db import engine
 import pyecharts.options as opts
 from pyecharts.charts import Pie, Bar
-
-from streamlit.components.v1 import html   # built‑in
+from streamlit.components.v1 import html  # built-in
 
 # ─── Page config ───────────────────────────────────────────
 st.set_page_config(
@@ -75,8 +74,51 @@ st.markdown(f"""
 
 # ─── Sidebar filters ───────────────────────────────────────
 st.sidebar.markdown("## Filters")
+
+# Season (single-select)
 seasons = ["2022/2023", "2023/2024", "2024/2025"]
 season = st.sidebar.selectbox("Select Season", seasons)
+
+# PTSO (multi-select)
+sql_ptso = """
+SELECT DISTINCT ptso
+FROM public.vw_club_summary_by_season
+WHERE season = %(season)s
+ORDER BY ptso;
+"""
+ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
+ptso_options = ptso_df["ptso"].dropna().tolist()
+selected_ptso = st.sidebar.multiselect(
+    "Filter by PTSO",
+    options=ptso_options,
+    default=ptso_options,
+    help="Show only clubs in these PTSOs"
+)
+
+# Status (multi-select)
+status_choices = ["Active", "Inactive"]
+selected_status = st.sidebar.multiselect(
+    "Filter by Status",
+    options=status_choices,
+    default=status_choices,
+    help="Show only clubs with this status"
+)
+
+# Club Name (multi-select)
+sql_names = """
+SELECT DISTINCT club_name
+FROM public.vw_club_summary_by_season
+WHERE season = %(season)s
+ORDER BY club_name;
+"""
+names_df = pd.read_sql(sql_names, engine, params={"season": season})
+name_options = names_df["club_name"].tolist()
+selected_name = st.sidebar.multiselect(
+    "Filter by Club Name",
+    options=name_options,
+    default=name_options,
+    help="Show only selected clubs"
+)
 
 # ─── 1) Summary metrics ────────────────────────────────────
 sql_sum = """
@@ -111,7 +153,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# First, query both data sets
+# ─── 2 & 3) Charts side by side ────────────────────────────
 sql_dist = """
 SELECT level_name, skier_count
 FROM public.vw_skier_level_distribution_by_season
@@ -128,10 +170,8 @@ ORDER BY level_id;
 """
 df_eval = pd.read_sql(sql_eval, engine, params={"season": season})
 
-# Create two columns
 col_pie, col_bar = st.columns(2, gap="large")
 
-# ─── Pie in left column ───────────────────────────────────
 with col_pie:
     st.subheader("Skier Level Distribution")
     if df_dist.empty:
@@ -155,7 +195,6 @@ with col_pie:
         )
         html(pie.render_embed(), height=450, width=None, scrolling=False)
 
-# ─── Bar in right column ──────────────────────────────────
 with col_bar:
     st.subheader("Evaluations by Levels")
     if df_eval.empty:
@@ -197,3 +236,83 @@ with col_bar:
             )
         )
         html(bar.render_embed(), height=500, width=None, scrolling=False)
+
+# ─── 4) Clubs list as editable grid + CSV download ─────────
+sql_clubs = """
+SELECT
+  club_id,
+  club_name,
+  sr_id,
+  primary_contact,
+  primary_contact_email,
+  skiers,
+  coaches,
+  ptso,
+  status
+FROM public.vw_club_summary_by_season
+WHERE season = %(season)s
+ORDER BY club_name;
+"""
+df_clubs = pd.read_sql(sql_clubs, engine, params={"season": season})
+
+# ─── Apply sidebar filters correctly ────────────────────────
+mask = pd.Series(True, index=df_clubs.index)
+if selected_ptso:
+    mask &= df_clubs["ptso"].isin(selected_ptso)
+if selected_status:
+    mask &= df_clubs["status"].isin(selected_status)
+if selected_name:
+    mask &= df_clubs["club_name"].isin(selected_name)
+df_clubs = df_clubs[mask]
+
+st.subheader("Clubs")
+if df_clubs.empty:
+    st.info("No clubs data for this season.")
+else:
+    # Prepare display DataFrame
+    df_display = (
+        df_clubs
+        .rename(columns={
+            "club_id": "ID",
+            "club_name": "Name",
+            "sr_id": "SR ID",
+            "primary_contact": "Contact",
+            "primary_contact_email": "Email",
+            "skiers": "Skiers",
+            "coaches": "Coaches",
+            "ptso": "PTSO",
+            "status": "Status",
+        })
+        .set_index("ID")
+    )
+    df_display["Status"] = df_display["Status"].astype("category")
+
+    # CSV download button
+    csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Download Clubs CSV",
+        data=csv,
+        file_name=f"clubs_{season.replace('/', '-')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+    # Render editable grid
+    st.data_editor(
+        df_display,
+        use_container_width=True,
+        hide_index=False,
+        column_config={
+            "Name": st.column_config.TextColumn("Name"),
+            "SR ID": st.column_config.NumberColumn("SR ID"),
+            "Contact": st.column_config.TextColumn("Contact"),
+            "Email": st.column_config.TextColumn("Email"),
+            "Skiers": st.column_config.NumberColumn("Skiers"),
+            "Coaches": st.column_config.NumberColumn("Coaches"),
+            "PTSO": st.column_config.TextColumn("PTSO"),
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["Active", "Inactive"]
+            ),
+        }
+    )
