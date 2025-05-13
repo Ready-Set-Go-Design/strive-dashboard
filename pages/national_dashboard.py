@@ -14,13 +14,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ─── Constrain max width ────────────────────────────────────
-# ─── Force 100% zoom ───────────────────────────────────────
+
+# 2) Then inject CSS to cap width
 st.markdown(
     """
     <style>
-      html, body, .reportview-container .main {
-        zoom: 1 !important;
+      .reportview-container .main .block-container {
+        max-width: 1440px;
+        margin: auto;
       }
     </style>
     """,
