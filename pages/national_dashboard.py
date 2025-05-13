@@ -221,82 +221,84 @@ df_eval = pd.read_sql(
 col_pie, col_bar = st.columns([1, 1.2], gap="large")
 
 with col_pie:
-    st.subheader("Skier Level Distribution")
-    if df_dist.empty:
-        st.info("No level-distribution data for the selected filters.")
-    else:
-        data_pairs = df_dist.values.tolist()
-        pie = (
-            Pie(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add("", data_pairs, radius=["40%", "70%"])
-            .set_global_opts(
-                legend_opts=opts.LegendOpts(
-                    orient="vertical",
-                    pos_left="left",
-                    textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-                ),
-                toolbox_opts=opts.ToolboxOpts(
-                    orient="horizontal",
-                    item_size=18,
-                    item_gap=8,
-                    pos_left="10%",
-                    feature={
-                        "saveAsImage": {"title": "save as image"},
-                        "restore":     {"title": "restore"},
-                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
-                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
-                        "magicType":   {"type": ["pie", "funnel"], "title": {"pie": "pie", "funnel": "funnel"}}
-                    }
-                ),
-                title_opts=opts.TitleOpts(title="")
-            )
-            .set_series_opts(
-                label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
-            )
-        )
-        html(pie.render_embed(), height=450, scrolling=False)
+    # ─── 2 & 3) Charts stacked vertically ──────────────────────
 
-with col_bar:
-    st.subheader("Evaluations by Level")
-    if df_eval.empty:
-        st.info("No evaluations data for the selected filters.")
-    else:
-        bar = (
-            Bar(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add_xaxis(df_eval["level_name"].tolist())
-            .add_yaxis(
-                series_name="Evaluations",
-                y_axis=df_eval["eval_count"].tolist(),
-                category_gap="35%"
-            )
-            .set_global_opts(
-                yaxis_opts=opts.AxisOpts(
-                    name="Count",
-                    axislabel_opts=opts.LabelOpts(color="#ffffff")
-                ),
-                xaxis_opts=opts.AxisOpts(
-                    axislabel_opts=opts.LabelOpts(color="#ffffff")
-                ),
-                legend_opts=opts.LegendOpts(
-                    textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-                ),
-                toolbox_opts=opts.ToolboxOpts(
-                    orient="horizontal",
-                    item_size=18,
-                    item_gap=8,
-                    pos_left="10%",
-                    feature={
-                        "saveAsImage": {"title": "save as image"},
-                        "restore":     {"title": "restore"},
-                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
-                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
-                        "magicType":   {"type": ["line", "bar"], "title": {"line": "line chart", "bar": "bar chart"}}
-                    }
-                ),
-                title_opts=opts.TitleOpts(title="")
-            )
+    st.subheader("Skier Level Distribution")
+if df_dist.empty:
+    st.info("No level-distribution data for the selected filters.")
+else:
+    data_pairs = df_dist.values.tolist()
+    pie = (
+        Pie(init_opts=opts.InitOpts(bg_color="#111111"))
+        .add("", data_pairs, radius=["40%", "70%"])
+        .set_global_opts(
+            legend_opts=opts.LegendOpts(
+                orient="vertical",
+                pos_left="left",
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+            ),
+            toolbox_opts=opts.ToolboxOpts(
+                orient="horizontal",
+                item_size=18,
+                item_gap=8,
+                pos_left="10%",
+                feature={
+                    "saveAsImage": {"title": "save as image"},
+                    "restore":     {"title": "restore"},
+                    "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
+                    "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
+                    "magicType":   {"type": ["pie", "funnel"], "title": {"pie": "pie", "funnel": "funnel"}}
+                }
+            ),
+            title_opts=opts.TitleOpts(title="")
         )
-        html(bar.render_embed(), height=500, scrolling=False)
+        .set_series_opts(
+            label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
+        )
+    )
+    html(pie.render_embed(), height=450, scrolling=False)
+
+st.subheader("Evaluations by Level")
+if df_eval.empty:
+    st.info("No evaluations data for the selected filters.")
+else:
+    bar = (
+        Bar(init_opts=opts.InitOpts(bg_color="#111111"))
+        .add_xaxis(df_eval["level_name"].tolist())
+        .add_yaxis(
+            series_name="Evaluations",
+            y_axis=df_eval["eval_count"].tolist(),
+            category_gap="35%"
+        )
+        .set_global_opts(
+            yaxis_opts=opts.AxisOpts(
+                name="Count",
+                axislabel_opts=opts.LabelOpts(color="#ffffff")
+            ),
+            xaxis_opts=opts.AxisOpts(
+                axislabel_opts=opts.LabelOpts(color="#ffffff")
+            ),
+            legend_opts=opts.LegendOpts(
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+            ),
+            toolbox_opts=opts.ToolboxOpts(
+                orient="horizontal",
+                item_size=18,
+                item_gap=8,
+                pos_left="10%",
+                feature={
+                    "saveAsImage": {"title": "save as image"},
+                    "restore":     {"title": "restore"},
+                    "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
+                    "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
+                    "magicType":   {"type": ["line", "bar"], "title": {"line": "line chart", "bar": "bar chart"}}
+                }
+            ),
+            title_opts=opts.TitleOpts(title="")
+        )
+    )
+    html(bar.render_embed(), height=500, scrolling=False)
+
 
 # ─── 4) Clubs list as editable grid + CSV download ─────────
 sql_clubs = """
