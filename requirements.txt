@@ -5,3 +5,4 @@ pandas
 plotly-express
 python-decouple   # for env vars
 PyJWT             # for decoding your Ionic JWTs
+pyecharts>=1.9.1
