@@ -1,8 +1,5 @@
-# pages/national_dashboard.py
-
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import base64
 from utils.db import engine
 import pyecharts.options as opts
@@ -18,8 +15,7 @@ st.set_page_config(
 )
 
 # ─── CSS for banner & metric cards ─────────────────────────
-st.markdown("""
-<style>
+st.markdown("""<style>
 /* Top banner */
 .header-banner {
   display: flex;
@@ -57,8 +53,7 @@ st.markdown("""
   font-weight: bold;
   color: #fafafa;
 }
-</style>
-""", unsafe_allow_html=True)
+</style>""", unsafe_allow_html=True)
 
 # ─── Banner with logo + title ──────────────────────────────
 logo_path = "Alpine_Canada_logo.svg.png"
@@ -123,25 +118,37 @@ selected_name = st.sidebar.multiselect(
 # ─── 1) Summary metrics ────────────────────────────────────
 sql_sum = """
 SELECT
-  total_coaches,
-  total_parents,
-  total_skiers,
-  evaluations_completed,
-  drills_shared
+  SUM(coaches)               AS total_coaches,
+  SUM(parents)               AS total_parents,
+  SUM(skiers)                AS total_skiers,
+  SUM(evaluations_completed) AS total_evaluations,
+  SUM(drills_shared)         AS total_drills
 FROM public.vw_national_summary_by_season
-WHERE season = %(season)s;
+WHERE season    = %(season)s
+  AND ptso      = ANY(%(ptso)s)
+  AND status    = ANY(%(status)s)
+  AND club_name = ANY(%(names)s);
 """
-df_sum = pd.read_sql(sql_sum, engine, params={"season": season})
+df_sum = pd.read_sql(
+    sql_sum,
+    engine,
+    params={
+        "season": season,
+        "ptso": selected_ptso,
+        "status": selected_status,
+        "names": selected_name
+    }
+)
 if df_sum.empty:
-    st.warning(f"No data found for season {season}.")
+    st.warning(f"No data found for season {season} with the selected filters.")
     st.stop()
 
 row = df_sum.iloc[0]
-coaches     = int(row.total_coaches or 0)
-parents     = int(row.total_parents or 0)
-skiers      = int(row.total_skiers  or 0)
-evaluations = int(row.evaluations_completed or 0)
-drills      = int(row.drills_shared or 0)
+coaches     = int(row.total_coaches     or 0)
+parents     = int(row.total_parents     or 0)
+skiers      = int(row.total_skiers      or 0)
+evaluations = int(row.total_evaluations or 0)
+drills      = int(row.total_drills      or 0)
 
 st.markdown(f"""
 <div class="stats-row">
@@ -155,27 +162,53 @@ st.markdown(f"""
 
 # ─── 2 & 3) Charts side by side ────────────────────────────
 sql_dist = """
-SELECT level_name, skier_count
-FROM public.vw_skier_level_distribution_by_season
-WHERE season = %(season)s
-ORDER BY level_id;
+SELECT
+  b.level_name,
+  SUM(b.skier_count) AS skier_count
+FROM public.vw_skier_level_distribution_by_season b
+WHERE b.season    = %(season)s
+  AND b.ptso      = ANY(%(ptso)s)
+  AND b.club_name = ANY(%(names)s)
+GROUP BY b.level_id, b.level_name
+ORDER BY b.level_id;
 """
-df_dist = pd.read_sql(sql_dist, engine, params={"season": season})
+df_dist = pd.read_sql(
+    sql_dist,
+    engine,
+    params={
+        "season": season,
+        "ptso": selected_ptso,
+        "names": selected_name
+    }
+)
 
 sql_eval = """
-SELECT level_name, eval_count
-FROM public.vw_evaluations_by_level_by_season
-WHERE season = %(season)s
-ORDER BY level_id;
+SELECT
+  b.level_name,
+  SUM(b.eval_count) AS eval_count
+FROM public.vw_evaluations_by_level_by_season b
+WHERE b.season    = %(season)s
+  AND b.ptso      = ANY(%(ptso)s)
+  AND b.club_name = ANY(%(names)s)
+GROUP BY b.level_id, b.level_name
+ORDER BY b.level_id;
 """
-df_eval = pd.read_sql(sql_eval, engine, params={"season": season})
+df_eval = pd.read_sql(
+    sql_eval,
+    engine,
+    params={
+        "season": season,
+        "ptso": selected_ptso,
+        "names": selected_name
+    }
+)
 
-col_pie, col_bar = st.columns(2, gap="large")
+col_pie, col_bar = st.columns([1, 1.2], gap="large")
 
 with col_pie:
     st.subheader("Skier Level Distribution")
     if df_dist.empty:
-        st.info("No level-distribution data for this season.")
+        st.info("No level-distribution data for the selected filters.")
     else:
         data_pairs = df_dist.values.tolist()
         pie = (
@@ -187,18 +220,32 @@ with col_pie:
                     pos_left="left",
                     textstyle_opts=opts.TextStyleOpts(color="#ffffff")
                 ),
+                toolbox_opts=opts.ToolboxOpts(
+                    orient="horizontal",
+                    item_size=18,
+                    item_gap=8,
+                    pos_left="10%",  # ← shift toolbox over
+                    feature={
+                        "saveAsImage": {"title": "save as image"},
+                        "restore":     {"title": "restore"},
+                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
+                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
+                        "magicType":   {"type": ["pie", "funnel"], "title": {"pie": "pie", "funnel": "funnel"}}
+                    }
+                ),
                 title_opts=opts.TitleOpts(title="")
             )
             .set_series_opts(
                 label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
             )
         )
-        html(pie.render_embed(), height=450, width=None, scrolling=False)
+        html(pie.render_embed(), height=450, scrolling=False)
+
 
 with col_bar:
-    st.subheader("Evaluations by Levels")
+    st.subheader("Evaluations by Level")
     if df_eval.empty:
-        st.info("No evaluations data for this season.")
+        st.info("No evaluations data for the selected filters.")
     else:
         bar = (
             Bar(init_opts=opts.InitOpts(bg_color="#111111"))
@@ -206,8 +253,7 @@ with col_bar:
             .add_yaxis(
                 series_name="Evaluations",
                 y_axis=df_eval["eval_count"].tolist(),
-                category_gap="35%",
-                color="#CD5C5C"
+                category_gap="35%"
             )
             .set_global_opts(
                 yaxis_opts=opts.AxisOpts(
@@ -224,6 +270,7 @@ with col_bar:
                     orient="horizontal",
                     item_size=18,
                     item_gap=8,
+                    pos_left="10%",  # ← same shift here
                     feature={
                         "saveAsImage": {"title": "save as image"},
                         "restore":     {"title": "restore"},
@@ -235,7 +282,8 @@ with col_bar:
                 title_opts=opts.TitleOpts(title="")
             )
         )
-        html(bar.render_embed(), height=500, width=None, scrolling=False)
+        html(bar.render_embed(), height=500, scrolling=False)
+
 
 # ─── 4) Clubs list as editable grid + CSV download ─────────
 sql_clubs = """
@@ -265,11 +313,15 @@ if selected_name:
     mask &= df_clubs["club_name"].isin(selected_name)
 df_clubs = df_clubs[mask]
 
+# ─── Clubs header + search + small CSV button ─────────────
 st.subheader("Clubs")
+search_term = st.text_input("Search Name", "")
+if search_term:
+    df_clubs = df_clubs[df_clubs["club_name"].str.contains(search_term, case=False)]
+
 if df_clubs.empty:
     st.info("No clubs data for this season.")
 else:
-    # Prepare display DataFrame
     df_display = (
         df_clubs
         .rename(columns={
@@ -287,17 +339,17 @@ else:
     )
     df_display["Status"] = df_display["Status"].astype("category")
 
-    # CSV download button
-    csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download Clubs CSV",
-        data=csv,
-        file_name=f"clubs_{season.replace('/', '-')}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
+    btn_col, _ = st.columns([1, 8])
+    with btn_col:
+        csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name=f"clubs_{season.replace('/', '-')}.csv",
+            mime="text/csv",
+            use_container_width=False
+        )
 
-    # Render editable grid
     st.data_editor(
         df_display,
         use_container_width=True,
