@@ -15,18 +15,18 @@ st.set_page_config(
 )
 
 # ─── Constrain max width ────────────────────────────────────
+# ─── Force 100% zoom ───────────────────────────────────────
 st.markdown(
     """
     <style>
-      /* cap dashboard at 1440px and center */
-      .reportview-container .main .block-container {
-        max-width: 1440px;
-        margin: auto;
+      html, body, .reportview-container .main {
+        zoom: 1 !important;
       }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
+
 
 # ─── CSS for banner & metric cards ─────────────────────────
 st.markdown("""<style>
