@@ -14,6 +14,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ─── Constrain max width ────────────────────────────────────
+st.markdown(
+    """
+    <style>
+      /* cap dashboard at 1440px and center */
+      .reportview-container .main .block-container {
+        max-width: 1440px;
+        margin: auto;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # ─── CSS for banner & metric cards ─────────────────────────
 st.markdown("""<style>
 /* Top banner */
@@ -70,8 +84,8 @@ st.markdown(f"""
 # ─── Sidebar filters ───────────────────────────────────────
 st.sidebar.markdown("## Filters")
 
-# Season (single-select)
-seasons = ["2022/2023", "2023/2024", "2024/2025"]
+# Season (single-select) — only the current year
+seasons = ["2024/2025"]
 season = st.sidebar.selectbox("Select Season", seasons)
 
 # PTSO (multi-select)
@@ -224,7 +238,7 @@ with col_pie:
                     orient="horizontal",
                     item_size=18,
                     item_gap=8,
-                    pos_left="10%",  # ← shift toolbox over
+                    pos_left="10%",
                     feature={
                         "saveAsImage": {"title": "save as image"},
                         "restore":     {"title": "restore"},
@@ -240,7 +254,6 @@ with col_pie:
             )
         )
         html(pie.render_embed(), height=450, scrolling=False)
-
 
 with col_bar:
     st.subheader("Evaluations by Level")
@@ -270,7 +283,7 @@ with col_bar:
                     orient="horizontal",
                     item_size=18,
                     item_gap=8,
-                    pos_left="10%",  # ← same shift here
+                    pos_left="10%",
                     feature={
                         "saveAsImage": {"title": "save as image"},
                         "restore":     {"title": "restore"},
@@ -283,7 +296,6 @@ with col_bar:
             )
         )
         html(bar.render_embed(), height=500, scrolling=False)
-
 
 # ─── 4) Clubs list as editable grid + CSV download ─────────
 sql_clubs = """
