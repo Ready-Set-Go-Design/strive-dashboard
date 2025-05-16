@@ -30,7 +30,7 @@ st.markdown(
     <style>
       /* make sure nothing is ever zoomed in or out */
       html, body, .reportview-container .main .block-container {
-        zoom: 0.9 !important;
+        zoom: 0.75 !important;
       }
     </style>
     """,
