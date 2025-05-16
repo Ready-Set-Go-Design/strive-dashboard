@@ -24,6 +24,18 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+# ─── Force 100% page zoom ─────────────────────────────────
+st.markdown(
+    """
+    <style>
+      /* make sure nothing is ever zoomed in or out */
+      html, body, .reportview-container .main .block-container {
+        zoom: 0.9 !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ─── CSS for banner & metric cards ─────────────────────────
 st.markdown("""<style>

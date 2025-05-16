@@ -1,7 +1,6 @@
 from sqlalchemy import text
-
 import os, sys
-#  ─── Bring the project root into Python’s import path ─────────
+# ─── Bring the project root into Python’s import path ─────────
 sys.path.insert(
     0,
     os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -9,7 +8,6 @@ sys.path.insert(
 
 from utils.db import engine
 
-# Season-aware summary view definition
 SQL = r"""
 DROP VIEW IF EXISTS public.vw_national_summary_by_season CASCADE;
 
@@ -34,19 +32,21 @@ WITH
 
   parent_cte AS (
     SELECT
-      u.club_id,
+      s.club_id,
       CASE
-        WHEN EXTRACT(MONTH FROM u.created_at) >= 7 THEN
-          CONCAT(EXTRACT(YEAR FROM u.created_at)::INT, '/', EXTRACT(YEAR FROM u.created_at)::INT + 1)
+        WHEN EXTRACT(MONTH FROM g.created_at) >= 7 THEN
+          CONCAT(EXTRACT(YEAR FROM g.created_at)::INT, '/', EXTRACT(YEAR FROM g.created_at)::INT + 1)
         ELSE
-          CONCAT((EXTRACT(YEAR FROM u.created_at)::INT - 1), '/', EXTRACT(YEAR FROM u.created_at)::INT)
+          CONCAT((EXTRACT(YEAR FROM g.created_at)::INT - 1), '/', EXTRACT(YEAR FROM g.created_at)::INT)
       END AS season,
-      COUNT(*) AS parents
-    FROM users u
-    WHERE u.role    = 'parent'
-      AND u.active  IS TRUE
-      AND u.club_id IS NOT NULL
-    GROUP BY u.club_id, season
+      COUNT(DISTINCT g.id) AS parents
+    FROM users g
+    JOIN users s
+      ON g.id = CAST(s.guardian_id AS INTEGER)
+    WHERE g.role    = 'guardian'
+      AND g.active  IS TRUE
+      AND s.club_id IS NOT NULL
+    GROUP BY s.club_id, season
   ),
 
   skier_cte AS (
@@ -77,7 +77,8 @@ WITH
       END AS season,
       COUNT(*) AS evaluations_completed
     FROM coach_rankings cr
-    JOIN users u ON cr.coach_id = u.id
+    JOIN users u
+      ON cr.coach_id = u.id
     WHERE u.club_id IS NOT NULL
     GROUP BY u.club_id, season
   ),
@@ -93,7 +94,8 @@ WITH
       END AS season,
       COUNT(*) AS drills_shared
     FROM share_drills sd
-    JOIN users u ON sd.coach_id = u.id               -- ← use coach_id, not shared_by
+    JOIN users u
+      ON sd.coach_id = u.id
     WHERE u.club_id IS NOT NULL
     GROUP BY u.club_id, season
   ),
@@ -172,7 +174,6 @@ LEFT JOIN contact_cte ct
 ORDER BY su.season, c.name;
 """
 
-
 def create_view():
     """
     Execute the CREATE OR REPLACE VIEW statement for vw_national_summary_by_season
@@ -180,7 +181,6 @@ def create_view():
     with engine.begin() as conn:
         conn.execute(text(SQL))
         print("✅ Created or replaced view: vw_national_summary_by_season")
-
 
 if __name__ == '__main__':
     create_view()
