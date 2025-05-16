@@ -323,42 +323,33 @@ else:
     )
     df_display["Status"] = df_display["Status"].astype("category")
 
-    # wide layout: small gutter on left, big column for table
-    gutter, table_col = st.columns([1, 4], gap="small")
+    # Download button
+    csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Download CSV",
+        data=csv,
+        file_name=f"clubs_{season.replace('/', '-')}.csv",
+        mime="text/csv",
+        key="download-clubs"
+    )
 
-    with gutter:
-        st.empty()  # spacer
-
-    with table_col:
-        # download button above the table
-        btn_col, _ = st.columns([1, 8])
-        with btn_col:
-            csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Download CSV",
-                data=csv,
-                file_name=f"clubs_{season.replace('/', '-')}.csv",
-                mime="text/csv",
-                use_container_width=False
-            )
-
-        # render the wide table
-        st.data_editor(
-            df_display,
-            use_container_width=True,
-            hide_index=False,
-            height=600,
-            column_config={
-                "Name": st.column_config.TextColumn("Name"),
-                "SR ID": st.column_config.NumberColumn("SR ID"),
-                "Contact": st.column_config.TextColumn("Contact"),
-                "Email": st.column_config.TextColumn("Email"),
-                "Skiers": st.column_config.NumberColumn("Skiers"),
-                "Coaches": st.column_config.NumberColumn("Coaches"),
-                "PTSO": st.column_config.TextColumn("PTSO"),
-                "Status": st.column_config.SelectboxColumn(
-                    "Status",
-                    options=["Active", "Inactive"]
-                ),
-            }
-        )
+    # Render the table full‐width
+    st.data_editor(
+        df_display,
+        use_container_width=True,
+        hide_index=False,
+        height=600,
+        column_config={
+            "Name": st.column_config.TextColumn("Name"),
+            "SR ID": st.column_config.NumberColumn("SR ID"),
+            "Contact": st.column_config.TextColumn("Contact"),
+            "Email": st.column_config.TextColumn("Email"),
+            "Skiers": st.column_config.NumberColumn("Skiers"),
+            "Coaches": st.column_config.NumberColumn("Coaches"),
+            "PTSO": st.column_config.TextColumn("PTSO"),
+            "Status": st.column_config.SelectboxColumn(
+                "Status",
+                options=["Active", "Inactive"]
+            ),
+        }
+    )
