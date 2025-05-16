@@ -226,12 +226,13 @@ df_eval = pd.read_sql(
     }
 )
 
-col_pie, col_bar = st.columns([2, 3], gap="large")
+# make pie wider relative to bar
+col_pie, col_bar = st.columns([3, 2], gap="large")
 
 with col_pie:
     st.subheader("Skier Level Distribution")
     if df_dist.empty:
-        st.info("No level‐distribution data for the selected filters.")
+        st.info("No level-distribution data for the selected filters.")
     else:
         pie_fig = px.pie(
             df_dist,
@@ -245,9 +246,7 @@ with col_pie:
             font_color="#ffffff",
             margin=dict(t=20, b=20, l=20, r=20),
             legend=dict(orientation="v", x=0),
-            height=600
         )
-        # fill the full column width
         st.plotly_chart(pie_fig, use_container_width=True)
 
 with col_bar:
@@ -259,7 +258,7 @@ with col_bar:
             df_eval,
             x="level_name",
             y="eval_count",
-            labels={"eval_count":"Count","level_name":""}
+            labels={"eval_count": "Count", "level_name": ""}
         )
         bar_fig.update_layout(
             paper_bgcolor="#111111",
@@ -267,7 +266,6 @@ with col_bar:
             font_color="#ffffff",
             margin=dict(t=20, b=20, l=20, r=20),
             xaxis_tickangle=-45,
-            height=600
         )
         st.plotly_chart(bar_fig, use_container_width=True)
 
