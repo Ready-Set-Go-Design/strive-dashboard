@@ -352,32 +352,31 @@ else:
 
     # build AG Grid options
     gb = GridOptionsBuilder.from_dataframe(df_display)
-    gb.configure_default_column(
-        sortable=True, filter=True, resizable=True, flex=1
-    )
+    gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
     grid_options = gb.build()
 
-    # ➤ full-bleed wrapper to break out of Streamlit padding
+    # full-bleed wrapper to break out of Streamlit padding
     st.markdown(
         """
         <div style="
           position: relative;
           left: 50%;
-          right: 50%;
           margin-left: -50vw;
-          margin-right: -50vw;
           width: 100vw;
+          overflow-x: auto;
         ">
         """,
         unsafe_allow_html=True,
     )
 
+    # render AG Grid full-width & taller
     AgGrid(
         df_display,
         gridOptions=grid_options,
         theme="streamlit",
-        height=800,               # increased height to span more of the page
+        height=1000,       # increased height
+        width="100%",      # ensure columns stretch full viewport
         fit_columns_on_grid_load=True,
     )
 
