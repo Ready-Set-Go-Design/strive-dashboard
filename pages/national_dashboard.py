@@ -86,6 +86,8 @@ st.markdown(f"""
 
 # ─── Sidebar filters ───────────────────────────────────────
 st.sidebar.markdown("## Filters")
+# wrap filters so our CSS only affects them
+st.sidebar.markdown('<div class="right-filters">', unsafe_allow_html=True)
 
 # Season (single-select)
 season = st.sidebar.selectbox("Select Season", ["2024/2025"])
@@ -98,7 +100,7 @@ WHERE season = %(season)s
 ORDER BY ptso;
 """
 ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
-ptso_options = [ptso for ptso in ptso_df["ptso"].dropna().tolist()]
+ptso_options = ptso_df["ptso"].dropna().tolist()
 ptso_choice = st.sidebar.selectbox("Filter by PTSO", ["All"] + ptso_options)
 selected_ptso = ptso_options if ptso_choice == "All" else [ptso_choice]
 
@@ -118,6 +120,8 @@ names_df = pd.read_sql(sql_names, engine, params={"season": season})
 name_options = names_df["club_name"].tolist()
 name_choice = st.sidebar.selectbox("Filter by Club Name", ["All"] + name_options)
 selected_name = name_options if name_choice == "All" else [name_choice]
+
+st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 
 # ─── 1) Summary metrics ────────────────────────────────────
