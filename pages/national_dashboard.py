@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import base64
 from utils.db import engine
+from st_aggrid import AgGrid, GridOptionsBuilder  # for the interactive table
 import pyecharts.options as opts
 from pyecharts.charts import Pie, Bar
 from streamlit.components.v1 import html  # built-in
@@ -286,7 +287,7 @@ with col_bar:
         )
         html(bar.render_embed(), height=500, scrolling=False)
 
-# ─── 4) Clubs list as editable grid + CSV download ─────────
+# ─── 4) Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """
 SELECT
   club_id,
@@ -304,6 +305,7 @@ ORDER BY club_name;
 """
 df_clubs = pd.read_sql(sql_clubs, engine, params={"season": season})
 
+# apply filters
 mask = pd.Series(True, index=df_clubs.index)
 if selected_ptso:
     mask &= df_clubs["ptso"].isin(selected_ptso)
@@ -321,9 +323,9 @@ if search_term:
 if df_clubs.empty:
     st.info("No clubs data for this season.")
 else:
+    # prepare display DataFrame
     df_display = (
-        df_clubs
-        .rename(columns={
+        df_clubs.rename(columns={
             "club_id": "ID",
             "club_name": "Name",
             "sr_id": "SR ID",
@@ -336,8 +338,8 @@ else:
         })
         .set_index("ID")
     )
-    df_display["Status"] = df_display["Status"].astype("category")
 
+    # CSV download button
     btn_col, _ = st.columns([1, 8])
     with btn_col:
         csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
@@ -349,21 +351,35 @@ else:
             use_container_width=False
         )
 
-    st.data_editor(
-        df_display,
-        use_container_width=True,
-        hide_index=False,
-        column_config={
-            "Name": st.column_config.TextColumn("Name"),
-            "SR ID": st.column_config.NumberColumn("SR ID"),
-            "Contact": st.column_config.TextColumn("Contact"),
-            "Email": st.column_config.TextColumn("Email"),
-            "Skiers": st.column_config.NumberColumn("Skiers"),
-            "Coaches": st.column_config.NumberColumn("Coaches"),
-            "PTSO": st.column_config.TextColumn("PTSO"),
-            "Status": st.column_config.SelectboxColumn(
-                "Status",
-                options=["Active", "Inactive"]
-            ),
-        }
+    # build AG Grid options
+    gb = GridOptionsBuilder.from_dataframe(df_display)
+    gb.configure_default_column(
+        sortable=True, filter=True, resizable=True, flex=1
     )
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
+    grid_options = gb.build()
+
+    # ➤ full-bleed wrapper to break out of Streamlit padding
+    st.markdown(
+        """
+        <div style="
+          position: relative;
+          left: 50%;
+          right: 50%;
+          margin-left: -50vw;
+          margin-right: -50vw;
+          width: 100vw;
+        ">
+        """,
+        unsafe_allow_html=True,
+    )
+
+    AgGrid(
+        df_display,
+        gridOptions=grid_options,
+        theme="streamlit",
+        height=500,
+        fit_columns_on_grid_load=True,
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
