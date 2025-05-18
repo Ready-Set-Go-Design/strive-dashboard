@@ -88,8 +88,7 @@ st.markdown(f"""
 st.sidebar.markdown("## Filters")
 
 # Season (single-select)
-seasons = ["2024/2025"]
-season = st.sidebar.selectbox("Select Season", seasons)
+season = st.sidebar.selectbox("Select Season", ["2024/2025"])
 
 # PTSO (multi-select)
 sql_ptso = """
@@ -378,7 +377,7 @@ else:
         df_display,
         gridOptions=grid_options,
         theme="streamlit",
-        height=500,
+        height=800,               # increased height to span more of the page
         fit_columns_on_grid_load=True,
     )
 
