@@ -90,7 +90,7 @@ st.sidebar.markdown("## Filters")
 # Season (single-select)
 season = st.sidebar.selectbox("Select Season", ["2024/2025"])
 
-# PTSO (multi-select)
+# PTSO (single-select dropdown with “All”)
 sql_ptso = """
 SELECT DISTINCT ptso
 FROM public.vw_club_summary_by_season
@@ -98,24 +98,16 @@ WHERE season = %(season)s
 ORDER BY ptso;
 """
 ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
-ptso_options = ptso_df["ptso"].dropna().tolist()
-selected_ptso = st.sidebar.multiselect(
-    "Filter by PTSO",
-    options=ptso_options,
-    default=ptso_options,
-    help="Show only clubs in these PTSOs"
-)
+ptso_options = [ptso for ptso in ptso_df["ptso"].dropna().tolist()]
+ptso_choice = st.sidebar.selectbox("Filter by PTSO", ["All"] + ptso_options)
+selected_ptso = ptso_options if ptso_choice == "All" else [ptso_choice]
 
-# Status (multi-select)
+# Status (single-select dropdown with “All”)
 status_choices = ["Active", "Inactive"]
-selected_status = st.sidebar.multiselect(
-    "Filter by Status",
-    options=status_choices,
-    default=status_choices,
-    help="Show only clubs with this status"
-)
+status_choice = st.sidebar.selectbox("Filter by Status", ["All"] + status_choices)
+selected_status = status_choices if status_choice == "All" else [status_choice]
 
-# Club Name (multi-select)
+# Club Name (single-select dropdown with “All”)
 sql_names = """
 SELECT DISTINCT club_name
 FROM public.vw_club_summary_by_season
@@ -124,12 +116,9 @@ ORDER BY club_name;
 """
 names_df = pd.read_sql(sql_names, engine, params={"season": season})
 name_options = names_df["club_name"].tolist()
-selected_name = st.sidebar.multiselect(
-    "Filter by Club Name",
-    options=name_options,
-    default=name_options,
-    help="Show only selected clubs"
-)
+name_choice = st.sidebar.selectbox("Filter by Club Name", ["All"] + name_options)
+selected_name = name_options if name_choice == "All" else [name_choice]
+
 
 # ─── 1) Summary metrics ────────────────────────────────────
 sql_sum = """
