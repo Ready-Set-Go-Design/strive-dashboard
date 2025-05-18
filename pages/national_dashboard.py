@@ -12,23 +12,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2) Then inject CSS to cap width
+# ─── Constrain max width & zoom ────────────────────────────
 st.markdown(
     """
     <style>
+      /* cap dashboard at 1440px and center */
       .reportview-container .main .block-container {
         max-width: 1440px;
         margin: auto;
       }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-# ─── Force 100% page zoom ─────────────────────────────────
-st.markdown(
-    """
-    <style>
-      /* make sure nothing is ever zoomed in or out */
+      /* force 75% zoom to fit deployed view */
       html, body, .reportview-container .main .block-container {
         zoom: 0.75 !important;
       }
@@ -39,50 +32,22 @@ st.markdown(
 
 # ─── CSS for banner & metric cards ─────────────────────────
 st.markdown("""<style>
-/* Top banner */
-.header-banner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  background-color: #d32f2f;
-  color: white;
-  padding: 1rem 2rem;
-  border-radius: 8px;
-  margin-bottom: 2rem;
-}
-/* Metric cards */
-.stats-row {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-.stat-card {
-  flex: 1;
-  background-color: #393939;
-  padding: 1.5rem;
-  border-radius: 8px;
-  text-align: center;
-}
-.stat-card p {
-  margin: 0;
-  font-size: 1.1rem;
-  color: #bbbbbb;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.stat-card h2 {
-  margin: 0.5rem 0 0;
-  font-size: 2.5rem;
-  font-weight: bold;
-  color: #fafafa;
-}
+.header-banner { display: flex; align-items: center; gap: 1rem;
+  background-color: #d32f2f; color: white; padding: 1rem 2rem;
+  border-radius: 8px; margin-bottom: 2rem; }
+.stats-row { display: flex; gap: 1rem; margin-bottom: 2rem; }
+.stat-card { flex: 1; background-color: #393939;
+  padding: 1.5rem; border-radius: 8px; text-align: center; }
+.stat-card p { margin: 0; font-size: 1.1rem; color: #bbbbbb;
+  text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-card h2 { margin: 0.5rem 0 0; font-size: 2.5rem;
+  font-weight: bold; color: #fafafa; }
 </style>""", unsafe_allow_html=True)
 
 # ─── Banner with logo + title ──────────────────────────────
 logo_path = "Alpine_Canada_logo.svg.png"
 with open(logo_path, "rb") as f:
     logo_b64 = base64.b64encode(f.read()).decode()
-
 st.markdown(f"""
 <div class="header-banner">
   <img src="data:image/png;base64,{logo_b64}" style="height:60px;">
@@ -92,68 +57,49 @@ st.markdown(f"""
 
 # ─── Sidebar filters ───────────────────────────────────────
 st.sidebar.markdown("## Filters")
+season = st.sidebar.selectbox("Select Season", ["2024/2025"])
 
-# Season (single-select) — only the current year
-seasons = ["2024/2025"]
-season = st.sidebar.selectbox("Select Season", seasons)
-
-# PTSO (multi-select)
-sql_ptso = """
-SELECT DISTINCT ptso
-FROM public.vw_club_summary_by_season
-WHERE season = %(season)s
-ORDER BY ptso;
-"""
-ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
-ptso_options = ptso_df["ptso"].dropna().tolist()
+ptso_df = pd.read_sql(
+    "SELECT DISTINCT ptso FROM public.vw_club_summary_by_season WHERE season=%(s)s ORDER BY ptso",
+    engine, params={"s": season}
+)
 selected_ptso = st.sidebar.multiselect(
     "Filter by PTSO",
-    options=ptso_options,
-    default=ptso_options,
-    help="Show only clubs in these PTSOs"
+    options=ptso_df["ptso"].dropna().tolist(),
+    default=ptso_df["ptso"].dropna().tolist()
 )
 
-# Status (multi-select)
-status_choices = ["Active", "Inactive"]
 selected_status = st.sidebar.multiselect(
     "Filter by Status",
-    options=status_choices,
-    default=status_choices,
-    help="Show only clubs with this status"
+    options=["Active", "Inactive"],
+    default=["Active", "Inactive"]
 )
 
-# Club Name (multi-select)
-sql_names = """
-SELECT DISTINCT club_name
-FROM public.vw_club_summary_by_season
-WHERE season = %(season)s
-ORDER BY club_name;
-"""
-names_df = pd.read_sql(sql_names, engine, params={"season": season})
-name_options = names_df["club_name"].tolist()
+names_df = pd.read_sql(
+    "SELECT DISTINCT club_name FROM public.vw_club_summary_by_season WHERE season=%(s)s ORDER BY club_name",
+    engine, params={"s": season}
+)
 selected_name = st.sidebar.multiselect(
     "Filter by Club Name",
-    options=name_options,
-    default=name_options,
-    help="Show only selected clubs"
+    options=names_df["club_name"].tolist(),
+    default=names_df["club_name"].tolist()
 )
 
 # ─── 1) Summary metrics ────────────────────────────────────
-sql_sum = """
-SELECT
-  SUM(coaches)               AS total_coaches,
-  SUM(parents)               AS total_parents,
-  SUM(skiers)                AS total_skiers,
-  SUM(evaluations_completed) AS total_evaluations,
-  SUM(drills_shared)         AS total_drills
-FROM public.vw_national_summary_by_season
-WHERE season    = %(season)s
-  AND ptso      = ANY(%(ptso)s)
-  AND status    = ANY(%(status)s)
-  AND club_name = ANY(%(names)s);
-"""
 df_sum = pd.read_sql(
-    sql_sum,
+    """
+    SELECT
+      SUM(coaches)               AS total_coaches,
+      SUM(parents)               AS total_parents,
+      SUM(skiers)                AS total_skiers,
+      SUM(evaluations_completed) AS total_evaluations,
+      SUM(drills_shared)         AS total_drills
+    FROM public.vw_national_summary_by_season
+    WHERE season    = %(season)s
+      AND ptso      = ANY(%(ptso)s)
+      AND status    = ANY(%(status)s)
+      AND club_name = ANY(%(names)s);
+    """,
     engine,
     params={
         "season": season,
@@ -184,50 +130,28 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── 2 & 3) Charts side by side ────────────────────────────
-sql_dist = """
-SELECT
-  b.level_name,
-  SUM(b.skier_count) AS skier_count
-FROM public.vw_skier_level_distribution_by_season b
-WHERE b.season    = %(season)s
-  AND b.ptso      = ANY(%(ptso)s)
-  AND b.club_name = ANY(%(names)s)
-GROUP BY b.level_id, b.level_name
-ORDER BY b.level_id;
-"""
 df_dist = pd.read_sql(
-    sql_dist,
-    engine,
-    params={
-        "season": season,
-        "ptso": selected_ptso,
-        "names": selected_name
-    }
+    """
+    SELECT level_name, SUM(skier_count) AS skier_count
+    FROM public.vw_skier_level_distribution_by_season
+    WHERE season=%(s)s AND ptso=ANY(%(ptso)s) AND club_name=ANY(%(names)s)
+    GROUP BY level_id, level_name ORDER BY level_id;
+    """,
+    engine, params={"s": season, "ptso": selected_ptso, "names": selected_name}
 )
 
-sql_eval = """
-SELECT
-  b.level_name,
-  SUM(b.eval_count) AS eval_count
-FROM public.vw_evaluations_by_level_by_season b
-WHERE b.season    = %(season)s
-  AND b.ptso      = ANY(%(ptso)s)
-  AND b.club_name = ANY(%(names)s)
-GROUP BY b.level_id, b.level_name
-ORDER BY b.level_id;
-"""
 df_eval = pd.read_sql(
-    sql_eval,
-    engine,
-    params={
-        "season": season,
-        "ptso": selected_ptso,
-        "names": selected_name
-    }
+    """
+    SELECT level_name, SUM(eval_count) AS eval_count
+    FROM public.vw_evaluations_by_level_by_season
+    WHERE season=%(s)s AND ptso=ANY(%(ptso)s) AND club_name=ANY(%(names)s)
+    GROUP BY level_id, level_name ORDER BY level_id;
+    """,
+    engine, params={"s": season, "ptso": selected_ptso, "names": selected_name}
 )
 
-# make pie wider relative to bar
-col_pie, col_bar = st.columns([3, 2], gap="large")
+# split evenly half/half
+col_pie, col_bar = st.columns(2, gap="large")
 
 with col_pie:
     st.subheader("Skier Level Distribution")
@@ -245,7 +169,6 @@ with col_pie:
             plot_bgcolor="#111111",
             font_color="#ffffff",
             margin=dict(t=20, b=20, l=20, r=20),
-            legend=dict(orientation="v", x=0),
         )
         st.plotly_chart(pie_fig, use_container_width=True)
 
@@ -297,7 +220,7 @@ if selected_name:
     mask &= df_clubs["club_name"].isin(selected_name)
 df_clubs = df_clubs[mask]
 
-# ─── Clubs header + search + small CSV button ─────────────
+# ─── Clubs header + search + CSV download + full-width table ─
 st.subheader("Clubs")
 search_term = st.text_input("Search Name", "")
 if search_term:
@@ -323,7 +246,7 @@ else:
     )
     df_display["Status"] = df_display["Status"].astype("category")
 
-    # Download button
+    # Download CSV
     csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Download CSV",
@@ -333,7 +256,7 @@ else:
         key="download-clubs"
     )
 
-    # Render the table full‐width
+    # Full-width, container-wide table
     st.data_editor(
         df_display,
         use_container_width=True,
