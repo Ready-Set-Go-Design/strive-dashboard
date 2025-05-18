@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 import base64
-import plotly.express as px
 from utils.db import engine
+import pyecharts.options as opts
+from pyecharts.charts import Pie, Bar
+from streamlit.components.v1 import html  # built-in
 
 # ─── Page config ───────────────────────────────────────────
 st.set_page_config(
@@ -12,16 +14,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ─── Constrain max width & zoom ────────────────────────────
+# ─── Widen canvas & remove zoom ────────────────────────────
 st.markdown(
     """
     <style>
-      /* cap dashboard at 1440px and center */
+      /* allow full-width canvas */
       .reportview-container .main .block-container {
-        max-width: 1440px;
-        margin: auto;
+        max-width: 100% !important;
+        padding: 1rem 2rem;
       }
-      /* force 75% zoom to fit deployed view */
+      /* reset zoom */
       html, body, .reportview-container .main .block-container {
         zoom: 0.75 !important;
       }
@@ -32,22 +34,48 @@ st.markdown(
 
 # ─── CSS for banner & metric cards ─────────────────────────
 st.markdown("""<style>
-.header-banner { display: flex; align-items: center; gap: 1rem;
-  background-color: #d32f2f; color: white; padding: 1rem 2rem;
-  border-radius: 8px; margin-bottom: 2rem; }
-.stats-row { display: flex; gap: 1rem; margin-bottom: 2rem; }
-.stat-card { flex: 1; background-color: #393939;
-  padding: 1.5rem; border-radius: 8px; text-align: center; }
-.stat-card p { margin: 0; font-size: 1.1rem; color: #bbbbbb;
-  text-transform: uppercase; letter-spacing: 0.05em; }
-.stat-card h2 { margin: 0.5rem 0 0; font-size: 2.5rem;
-  font-weight: bold; color: #fafafa; }
+.header-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background-color: #d32f2f;
+  color: white;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+.stats-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.stat-card {
+  flex: 1;
+  background-color: #393939;
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+}
+.stat-card p {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #bbbbbb;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.stat-card h2 {
+  margin: 0.5rem 0 0;
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #fafafa;
+}
 </style>""", unsafe_allow_html=True)
 
 # ─── Banner with logo + title ──────────────────────────────
 logo_path = "Alpine_Canada_logo.svg.png"
 with open(logo_path, "rb") as f:
     logo_b64 = base64.b64encode(f.read()).decode()
+
 st.markdown(f"""
 <div class="header-banner">
   <img src="data:image/png;base64,{logo_b64}" style="height:60px;">
@@ -57,49 +85,68 @@ st.markdown(f"""
 
 # ─── Sidebar filters ───────────────────────────────────────
 st.sidebar.markdown("## Filters")
-season = st.sidebar.selectbox("Select Season", ["2024/2025"])
 
-ptso_df = pd.read_sql(
-    "SELECT DISTINCT ptso FROM public.vw_club_summary_by_season WHERE season=%(s)s ORDER BY ptso",
-    engine, params={"s": season}
-)
+# Season (single-select)
+seasons = ["2024/2025"]
+season = st.sidebar.selectbox("Select Season", seasons)
+
+# PTSO (multi-select)
+sql_ptso = """
+SELECT DISTINCT ptso
+FROM public.vw_club_summary_by_season
+WHERE season = %(season)s
+ORDER BY ptso;
+"""
+ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
+ptso_options = ptso_df["ptso"].dropna().tolist()
 selected_ptso = st.sidebar.multiselect(
     "Filter by PTSO",
-    options=ptso_df["ptso"].dropna().tolist(),
-    default=ptso_df["ptso"].dropna().tolist()
+    options=ptso_options,
+    default=ptso_options,
+    help="Show only clubs in these PTSOs"
 )
 
+# Status (multi-select)
+status_choices = ["Active", "Inactive"]
 selected_status = st.sidebar.multiselect(
     "Filter by Status",
-    options=["Active", "Inactive"],
-    default=["Active", "Inactive"]
+    options=status_choices,
+    default=status_choices,
+    help="Show only clubs with this status"
 )
 
-names_df = pd.read_sql(
-    "SELECT DISTINCT club_name FROM public.vw_club_summary_by_season WHERE season=%(s)s ORDER BY club_name",
-    engine, params={"s": season}
-)
+# Club Name (multi-select)
+sql_names = """
+SELECT DISTINCT club_name
+FROM public.vw_club_summary_by_season
+WHERE season = %(season)s
+ORDER BY club_name;
+"""
+names_df = pd.read_sql(sql_names, engine, params={"season": season})
+name_options = names_df["club_name"].tolist()
 selected_name = st.sidebar.multiselect(
     "Filter by Club Name",
-    options=names_df["club_name"].tolist(),
-    default=names_df["club_name"].tolist()
+    options=name_options,
+    default=name_options,
+    help="Show only selected clubs"
 )
 
 # ─── 1) Summary metrics ────────────────────────────────────
+sql_sum = """
+SELECT
+  SUM(coaches)               AS total_coaches,
+  SUM(parents)               AS total_parents,
+  SUM(skiers)                AS total_skiers,
+  SUM(evaluations_completed) AS total_evaluations,
+  SUM(drills_shared)         AS total_drills
+FROM public.vw_national_summary_by_season
+WHERE season    = %(season)s
+  AND ptso      = ANY(%(ptso)s)
+  AND status    = ANY(%(status)s)
+  AND club_name = ANY(%(names)s);
+"""
 df_sum = pd.read_sql(
-    """
-    SELECT
-      SUM(coaches)               AS total_coaches,
-      SUM(parents)               AS total_parents,
-      SUM(skiers)                AS total_skiers,
-      SUM(evaluations_completed) AS total_evaluations,
-      SUM(drills_shared)         AS total_drills
-    FROM public.vw_national_summary_by_season
-    WHERE season    = %(season)s
-      AND ptso      = ANY(%(ptso)s)
-      AND status    = ANY(%(status)s)
-      AND club_name = ANY(%(names)s);
-    """,
+    sql_sum,
     engine,
     params={
         "season": season,
@@ -130,67 +177,114 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── 2 & 3) Charts side by side ────────────────────────────
-df_dist = pd.read_sql(
-    """
-    SELECT level_name, SUM(skier_count) AS skier_count
-    FROM public.vw_skier_level_distribution_by_season
-    WHERE season=%(s)s AND ptso=ANY(%(ptso)s) AND club_name=ANY(%(names)s)
-    GROUP BY level_id, level_name ORDER BY level_id;
-    """,
-    engine, params={"s": season, "ptso": selected_ptso, "names": selected_name}
-)
+sql_dist = """
+SELECT
+  level_name,
+  SUM(skier_count) AS skier_count
+FROM public.vw_skier_level_distribution_by_season
+WHERE season    = %(season)s
+  AND ptso      = ANY(%(ptso)s)
+  AND club_name = ANY(%(names)s)
+GROUP BY level_id, level_name
+ORDER BY level_id;
+"""
+df_dist = pd.read_sql(sql_dist, engine, params={
+    "season": season,
+    "ptso": selected_ptso,
+    "names": selected_name
+})
 
-df_eval = pd.read_sql(
-    """
-    SELECT level_name, SUM(eval_count) AS eval_count
-    FROM public.vw_evaluations_by_level_by_season
-    WHERE season=%(s)s AND ptso=ANY(%(ptso)s) AND club_name=ANY(%(names)s)
-    GROUP BY level_id, level_name ORDER BY level_id;
-    """,
-    engine, params={"s": season, "ptso": selected_ptso, "names": selected_name}
-)
+sql_eval = """
+SELECT
+  level_name,
+  SUM(eval_count) AS eval_count
+FROM public.vw_evaluations_by_level_by_season
+WHERE season    = %(season)s
+  AND ptso      = ANY(%(ptso)s)
+  AND club_name = ANY(%(names)s)
+GROUP BY level_id, level_name
+ORDER BY level_id;
+"""
+df_eval = pd.read_sql(sql_eval, engine, params={
+    "season": season,
+    "ptso": selected_ptso,
+    "names": selected_name
+})
 
-# split evenly half/half
-col_pie, col_bar = st.columns(2, gap="large")
+col_pie, col_bar = st.columns([1, 1.2], gap="large")
 
 with col_pie:
     st.subheader("Skier Level Distribution")
     if df_dist.empty:
         st.info("No level-distribution data for the selected filters.")
     else:
-        pie_fig = px.pie(
-            df_dist,
-            names="level_name",
-            values="skier_count",
-            hole=0.4
+        data_pairs = df_dist.values.tolist()
+        pie = (
+            Pie(init_opts=opts.InitOpts(bg_color="#111111"))
+            .add("", data_pairs, radius=["40%", "70%"])
+            .set_global_opts(
+                legend_opts=opts.LegendOpts(
+                    orient="vertical",
+                    pos_left="left",
+                    textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+                ),
+                toolbox_opts=opts.ToolboxOpts(
+                    orient="horizontal",
+                    item_size=18,
+                    item_gap=8,
+                    pos_left="10%",
+                    feature={
+                        "saveAsImage": {"title": "save as image"},
+                        "restore":     {"title": "restore"},
+                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
+                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
+                        "magicType":   {"type": ["pie", "funnel"], "title": {"pie": "pie", "funnel": "funnel"}}
+                    }
+                )
+            )
+            .set_series_opts(
+                label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
+            )
         )
-        pie_fig.update_layout(
-            paper_bgcolor="#111111",
-            plot_bgcolor="#111111",
-            font_color="#ffffff",
-            margin=dict(t=20, b=20, l=20, r=20),
-        )
-        st.plotly_chart(pie_fig, use_container_width=True)
+        html(pie.render_embed(), height=450, scrolling=False)
 
 with col_bar:
     st.subheader("Evaluations by Level")
     if df_eval.empty:
         st.info("No evaluations data for the selected filters.")
     else:
-        bar_fig = px.bar(
-            df_eval,
-            x="level_name",
-            y="eval_count",
-            labels={"eval_count": "Count", "level_name": ""}
+        bar = (
+            Bar(init_opts=opts.InitOpts(bg_color="#111111"))
+            .add_xaxis(df_eval["level_name"].tolist())
+            .add_yaxis(
+                series_name="Evaluations",
+                y_axis=df_eval["eval_count"].tolist(),
+                category_gap="35%"
+            )
+            .set_global_opts(
+                yaxis_opts=opts.AxisOpts(
+                    name="Count",
+                    axislabel_opts=opts.LabelOpts(color="#ffffff")
+                ),
+                xaxis_opts=opts.AxisOpts(
+                    axislabel_opts=opts.LabelOpts(color="#ffffff")
+                ),
+                toolbox_opts=opts.ToolboxOpts(
+                    orient="horizontal",
+                    item_size=18,
+                    item_gap=8,
+                    pos_left="10%",
+                    feature={
+                        "saveAsImage": {"title": "save as image"},
+                        "restore":     {"title": "restore"},
+                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
+                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
+                        "magicType":   {"type": ["line", "bar"], "title": {"line": "line chart", "bar": "bar chart"}}
+                    }
+                )
+            )
         )
-        bar_fig.update_layout(
-            paper_bgcolor="#111111",
-            plot_bgcolor="#111111",
-            font_color="#ffffff",
-            margin=dict(t=20, b=20, l=20, r=20),
-            xaxis_tickangle=-45,
-        )
-        st.plotly_chart(bar_fig, use_container_width=True)
+        html(bar.render_embed(), height=500, scrolling=False)
 
 # ─── 4) Clubs list as editable grid + CSV download ─────────
 sql_clubs = """
@@ -210,7 +304,6 @@ ORDER BY club_name;
 """
 df_clubs = pd.read_sql(sql_clubs, engine, params={"season": season})
 
-# ─── Apply sidebar filters correctly ────────────────────────
 mask = pd.Series(True, index=df_clubs.index)
 if selected_ptso:
     mask &= df_clubs["ptso"].isin(selected_ptso)
@@ -220,7 +313,6 @@ if selected_name:
     mask &= df_clubs["club_name"].isin(selected_name)
 df_clubs = df_clubs[mask]
 
-# ─── Clubs header + search + CSV download + full-width table ─
 st.subheader("Clubs")
 search_term = st.text_input("Search Name", "")
 if search_term:
@@ -246,22 +338,21 @@ else:
     )
     df_display["Status"] = df_display["Status"].astype("category")
 
-    # Download CSV
-    csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download CSV",
-        data=csv,
-        file_name=f"clubs_{season.replace('/', '-')}.csv",
-        mime="text/csv",
-        key="download-clubs"
-    )
+    btn_col, _ = st.columns([1, 8])
+    with btn_col:
+        csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name=f"clubs_{season.replace('/', '-')}.csv",
+            mime="text/csv",
+            use_container_width=False
+        )
 
-    # Full-width, container-wide table
     st.data_editor(
         df_display,
         use_container_width=True,
         hide_index=False,
-        height=600,
         column_config={
             "Name": st.column_config.TextColumn("Name"),
             "SR ID": st.column_config.NumberColumn("SR ID"),
