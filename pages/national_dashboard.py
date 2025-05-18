@@ -350,23 +350,27 @@ else:
             use_container_width=False
         )
 
+    # inject full-bleed CSS & force grid width
+    st.markdown(
+        """
+        <style>
+          .ag-root-wrapper, .ag-theme-streamlit {
+            width: 100% !important;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # build AG Grid options
     gb = GridOptionsBuilder.from_dataframe(df_display)
     gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
     grid_options = gb.build()
 
-    # full-bleed wrapper to break out of Streamlit padding
+    # wrap AG Grid in full-viewport container
     st.markdown(
-        """
-        <div style="
-          position: relative;
-          left: 50%;
-          margin-left: -50vw;
-          width: 100vw;
-          overflow-x: auto;
-        ">
-        """,
+        '<div style="position: relative; left:50%; transform: translateX(-50%); width:100vw; overflow-x:auto;">',
         unsafe_allow_html=True,
     )
 
@@ -376,7 +380,6 @@ else:
         gridOptions=grid_options,
         theme="streamlit",
         height=1000,       # increased height
-        width="100%",      # ensure columns stretch full viewport
         fit_columns_on_grid_load=True,
     )
 
