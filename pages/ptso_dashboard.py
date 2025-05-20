@@ -80,7 +80,7 @@ with open(logo_path, "rb") as f:
 st.markdown(f"""
 <div class="header-banner">
   <img src="data:image/png;base64,{logo_b64}" style="height:60px;">
-  <h1 style="margin:0;font-size:3rem;">National Dashboard</h1>
+  <h1 style="margin:0;font-size:3rem;">PTSO Dashboard</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -124,160 +124,299 @@ selected_name = name_options if name_choice == "All" else [name_choice]
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 
-# ─── 1) Summary metrics ────────────────────────────────────
-sql_sum = """
+# ─── 1) Provincial summary metrics ──────────────────────────
+sql_ptso_sum = """
+WITH base AS (
+  SELECT
+    club_id,
+    skiers,
+    coaches,
+    evaluations_completed,
+    drills_shared
+  FROM public.vw_national_summary_by_season
+  WHERE season    = %(season)s
+    AND ptso      = ANY(%(ptso)s)
+    AND status    = ANY(%(status)s)
+    AND club_name = ANY(%(names)s)
+)
 SELECT
-  SUM(coaches)               AS total_coaches,
-  SUM(parents)               AS total_parents,
-  SUM(skiers)                AS total_skiers,
-  SUM(evaluations_completed) AS total_evaluations,
-  SUM(drills_shared)         AS total_drills
-FROM public.vw_national_summary_by_season
-WHERE season    = %(season)s
-  AND ptso      = ANY(%(ptso)s)
-  AND status    = ANY(%(status)s)
-  AND club_name = ANY(%(names)s);
+  COUNT(DISTINCT club_id)      AS active_clubs,
+  SUM(skiers)                  AS total_skiers,
+  SUM(coaches)                 AS total_coaches,
+  SUM(evaluations_completed)   AS evals_done,
+  SUM(drills_shared)           AS drills_shared
+FROM base;
 """
+
 df_sum = pd.read_sql(
-    sql_sum,
+    sql_ptso_sum,
     engine,
     params={
         "season": season,
-        "ptso": selected_ptso,
+        "ptso":   selected_ptso,
         "status": selected_status,
-        "names": selected_name
+        "names":  selected_name
     }
 )
+
 if df_sum.empty:
     st.warning(f"No data found for season {season} with the selected filters.")
     st.stop()
 
 row = df_sum.iloc[0]
-coaches     = int(row.total_coaches     or 0)
-parents     = int(row.total_parents     or 0)
-skiers      = int(row.total_skiers      or 0)
-evaluations = int(row.total_evaluations or 0)
-drills      = int(row.total_drills      or 0)
 
+# ─── derive the ratio‑style KPIs safely ─────────────────────
+active_clubs      = int(row.active_clubs or 0)
+total_skiers      = int(row.total_skiers or 0)
+total_coaches     = int(row.total_coaches or 0)
+coach_skier_ratio = (total_coaches / total_skiers) if total_skiers else 0
+eval_completion   = (row.evals_done / total_skiers) if total_skiers else 0
+drills_per_coach  = (row.drills_shared / total_coaches) if total_coaches else 0
+
+# ─── metric cards (reuse existing CSS) ─────────────────────
 st.markdown(f"""
 <div class="stats-row">
-  <div class="stat-card"><p>Coaches</p><h2>{coaches:,}</h2></div>
-  <div class="stat-card"><p>Parents</p><h2>{parents:,}</h2></div>
-  <div class="stat-card"><p>Skiers</p><h2>{skiers:,}</h2></div>
-  <div class="stat-card"><p>Evaluations Completed</p><h2>{evaluations:,}</h2></div>
-  <div class="stat-card"><p>Drills Shared</p><h2>{drills:,}</h2></div>
+  <div class="stat-card"><p>Active Clubs</p><h2>{active_clubs:,}</h2></div>
+  <div class="stat-card"><p>Total Skiers</p><h2>{total_skiers:,}</h2></div>
+  <div class="stat-card"><p>Coach / Skier Ratio</p><h2>{coach_skier_ratio:.2f}</h2></div>
+  <div class="stat-card"><p>Eval Completion %</p><h2>{eval_completion:.0%}</h2></div>
+  <div class="stat-card"><p>Drills per Coach</p><h2>{drills_per_coach:.2f}</h2></div>
 </div>
 """, unsafe_allow_html=True)
 
-# ─── 2 & 3) Charts side by side ────────────────────────────
-sql_dist = """
+
+# ─── 2 & 3) Provincial charts side by side ────────────────
+# 2a) TOP‑10 CLUBS BY SKIER COUNT ---------------------------
+sql_top_clubs = """
 SELECT
-  level_name,
-  SUM(skier_count) AS skier_count
-FROM public.vw_skier_level_distribution_by_season
+  club_name,
+  SUM(skiers) AS skier_total
+FROM public.vw_club_summary_by_season
 WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
+  AND status    = ANY(%(status)s)
   AND club_name = ANY(%(names)s)
-GROUP BY level_id, level_name
-ORDER BY level_id;
+GROUP BY club_name
+ORDER BY skier_total DESC
+LIMIT 10;
 """
-df_dist = pd.read_sql(sql_dist, engine, params={
+df_top = pd.read_sql(sql_top_clubs, engine, params={
     "season": season,
-    "ptso": selected_ptso,
-    "names": selected_name
+    "ptso":   selected_ptso,
+    "status": selected_status,
+    "names":  selected_name
 })
 
-sql_eval = """
+# 2b) 5‑YEAR TREND OF TOTAL SKIERS --------------------------
+#   • grab the first season part (e.g. "2024" from "2024/2025")
+season_start = int(season.split("/")[0])
+season_list  = [f"{yr}/{yr+1}" for yr in range(season_start - 4, season_start + 1)]
+
+sql_trend = """
 SELECT
-  level_name,
-  SUM(eval_count) AS eval_count
-FROM public.vw_evaluations_by_level_by_season
-WHERE season    = %(season)s
+  season,
+  SUM(skiers) AS total_skiers
+FROM public.vw_national_summary_by_season
+WHERE season    = ANY(%(season_range)s)
   AND ptso      = ANY(%(ptso)s)
-  AND club_name = ANY(%(names)s)
-GROUP BY level_id, level_name
-ORDER BY level_id;
+  AND status    = ANY(%(status)s)
+GROUP BY season
+ORDER BY season;
 """
-df_eval = pd.read_sql(sql_eval, engine, params={
-    "season": season,
-    "ptso": selected_ptso,
-    "names": selected_name
+df_trend = pd.read_sql(sql_trend, engine, params={
+    "season_range": season_list,
+    "ptso":         selected_ptso,
+    "status":       selected_status
 })
 
-col_pie, col_bar = st.columns([1, 1.2], gap="large")
+# ─── build the two charts in Streamlit columns ─────────────
+col_left, col_right = st.columns([1, 1], gap="large")
 
-with col_pie:
-    st.subheader("Skier Level Distribution")
-    if df_dist.empty:
-        st.info("No level-distribution data for the selected filters.")
-    else:
-        data_pairs = df_dist.values.tolist()
-        pie = (
-            Pie(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add("", data_pairs, radius=["40%", "70%"])
-            .set_global_opts(
-                legend_opts=opts.LegendOpts(
-                    orient="vertical",
-                    pos_left="left",
-                    textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-                ),
-                toolbox_opts=opts.ToolboxOpts(
-                    orient="horizontal",
-                    item_size=18,
-                    item_gap=8,
-                    pos_left="10%",
-                    feature={
-                        "saveAsImage": {"title": "save as image"},
-                        "restore":     {"title": "restore"},
-                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
-                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
-                        "magicType":   {"type": ["pie", "funnel"], "title": {"pie": "pie", "funnel": "funnel"}}
-                    }
-                )
-            )
-            .set_series_opts(
-                label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
-            )
-        )
-        html(pie.render_embed(), height=450, scrolling=False)
-
-with col_bar:
-    st.subheader("Evaluations by Level")
-    if df_eval.empty:
-        st.info("No evaluations data for the selected filters.")
+# ---- Left: Top‑10 bar ------------------------------------
+with col_left:
+    st.subheader("Top 10 Clubs by Skier Count")
+    if df_top.empty:
+        st.info("No club data for the selected filters.")
     else:
         bar = (
             Bar(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add_xaxis(df_eval["level_name"].tolist())
+            .add_xaxis(df_top["club_name"].tolist())
             .add_yaxis(
-                series_name="Evaluations",
-                y_axis=df_eval["eval_count"].tolist(),
+                series_name="Skiers",
+                y_axis=df_top["skier_total"].tolist(),
                 category_gap="35%"
             )
+            .reversal_axis()  # horizontal bars
+            .set_series_opts(
+                label_opts=opts.LabelOpts(position="right", color="#ffffff")
+            )
             .set_global_opts(
-                yaxis_opts=opts.AxisOpts(
-                    name="Count",
-                    axislabel_opts=opts.LabelOpts(color="#ffffff")
-                ),
-                xaxis_opts=opts.AxisOpts(
-                    axislabel_opts=opts.LabelOpts(color="#ffffff")
-                ),
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
                 toolbox_opts=opts.ToolboxOpts(
                     orient="horizontal",
-                    item_size=18,
-                    item_gap=8,
                     pos_left="10%",
                     feature={
                         "saveAsImage": {"title": "save as image"},
-                        "restore":     {"title": "restore"},
-                        "dataZoom":    {"title": {"zoom": "zoom", "back": "reset zoom"}},
-                        "dataView":    {"title": "data view", "lang": ["data view", "turn off", "refresh"]},
-                        "magicType":   {"type": ["line", "bar"], "title": {"line": "line chart", "bar": "bar chart"}}
+                        "restore":     {"title": "restore"}
                     }
                 )
             )
         )
         html(bar.render_embed(), height=500, scrolling=False)
+
+# ---- Right: Evaluation Completion % by Club ---------------
+sql_eval_rate = """
+SELECT
+  club_name,
+  SUM(evaluations_completed) AS evals_done,
+  SUM(skiers)                AS skiers
+FROM public.vw_national_summary_by_season
+WHERE season    = %(season)s
+  AND ptso      = ANY(%(ptso)s)
+  AND status    = ANY(%(status)s)
+  AND club_name = ANY(%(names)s)
+GROUP BY club_name
+HAVING SUM(skiers) > 0
+ORDER BY SUM(evaluations_completed)::numeric
+       / NULLIF(SUM(skiers),0) DESC      -- ← use the full expression
+LIMIT 10;
+"""
+
+df_rate = pd.read_sql(sql_eval_rate, engine, params={
+    "season": season,
+    "ptso":   selected_ptso,
+    "status": selected_status,
+    "names":  selected_name
+})
+
+with col_right:
+    st.subheader("Evaluation Completion Rate by Club")
+    if df_rate.empty:
+        st.info("No evaluation data for the selected filters.")
+    else:
+        # calculate percentage
+        df_rate["pct"] = df_rate["evals_done"] / df_rate["skiers"] * 100
+        bar = (
+            Bar(init_opts=opts.InitOpts(bg_color="#111111"))
+            .add_xaxis(df_rate["club_name"].tolist())
+            .add_yaxis(
+                series_name="Completion %",
+                y_axis=df_rate["pct"].round(1).tolist(),
+                category_gap="35%"
+            )
+            .reversal_axis()   # horizontal bars
+            .set_series_opts(
+                label_opts=opts.LabelOpts(
+                    position="right",
+                    formatter="{c}%",
+                    color="#ffffff"
+                )
+            )
+            .set_global_opts(
+                xaxis_opts=opts.AxisOpts(
+                    axislabel_opts=opts.LabelOpts(color="#ffffff"),
+                    max_=100
+                ),
+                yaxis_opts=opts.AxisOpts(
+                    axislabel_opts=opts.LabelOpts(color="#ffffff")
+                ),
+                toolbox_opts=opts.ToolboxOpts(
+                    orient="horizontal",
+                    pos_left="10%",
+                    feature={
+                        "saveAsImage": {"title": "save as image"},
+                        "restore":     {"title": "restore"}
+                    }
+                )
+            )
+        )
+        html(bar.render_embed(), height=500, scrolling=False)
+
+
+# ─── Pass‑Rate % by Level (from the new view) ──────────────
+st.subheader("Pass‑Rate % by Level")
+
+sql_pass_rate = """
+SELECT
+  level_name,
+  ROUND(
+    SUM(eval_passed)::numeric / NULLIF(SUM(eval_total),0) * 100,
+    1
+  ) AS pass_pct
+FROM public.vw_evaluations_by_level_by_season
+WHERE season    = %(season)s
+  AND ptso      = ANY(%(ptso)s)
+  AND club_name = ANY(%(names)s)
+GROUP BY level_name
+ORDER BY MIN(level_id);          -- keeps logical order
+"""
+
+df_pass = pd.read_sql(
+    sql_pass_rate,
+    engine,
+    params={
+        "season": season,
+        "ptso":   selected_ptso,
+        "names":  selected_name
+    }
+)
+
+if df_pass.empty:
+    st.info("No pass‑rate data for the selected filters.")
+else:
+    # ── Nightingale‑Rose (polar pie) instead of bar ─────────
+    # ── Light‑theme Nightingale‑Rose chart ─────────────────────
+    data_pairs = list(
+    zip(df_pass["level_name"].tolist(), df_pass["pass_pct"].round(1).tolist())
+)
+
+# pastel palette by pass‑rate band
+rose_colors = [
+    "#ff9e9e" if pct < 50      # soft red
+    else "#ffdd8d" if pct < 75 # soft orange/yellow
+    else "#7ed6c8"             # soft teal
+    for _, pct in data_pairs
+]
+
+pie_rose = (
+    Pie(init_opts=opts.InitOpts(bg_color="#f5f5f5"))  # ← lighter canvas
+    .add(
+        series_name="Pass %",
+        data_pair=data_pairs,
+        radius=["15%", "65%"],
+        center=["55%", "50%"],
+        rosetype="radius",
+        label_opts=opts.LabelOpts(
+            formatter="{b}\n{c} %",
+            position="outside",
+            color="#333333"      # dark text on light bg
+        ),
+        itemstyle_opts=opts.ItemStyleOpts(color=rose_colors)
+    )
+    .set_global_opts(
+        legend_opts=opts.LegendOpts(
+            orient="vertical",
+            pos_left="left",
+            textstyle_opts=opts.TextStyleOpts(color="#333333")
+        ),
+        toolbox_opts=opts.ToolboxOpts(
+            orient="horizontal",
+            pos_left="10%",
+            feature={
+                "saveAsImage": {"title": "Save"},
+                "restore":     {"title": "Reset"}
+            }
+        )
+    )
+)
+
+html(pie_rose.render_embed(), height=500, scrolling=False)
+
+
+
+
+
 
 # ─── 4) Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """
