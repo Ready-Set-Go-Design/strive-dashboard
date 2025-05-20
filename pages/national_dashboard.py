@@ -170,6 +170,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── 2 & 3) Charts side by side ────────────────────────────
+# Skier distribution (unchanged)
 sql_dist = """
 SELECT
   level_name,
@@ -183,14 +184,16 @@ ORDER BY level_id;
 """
 df_dist = pd.read_sql(sql_dist, engine, params={
     "season": season,
-    "ptso": selected_ptso,
-    "names": selected_name
+    "ptso":   selected_ptso,
+    "names":  selected_name
 })
 
+# ←── Edited evaluations query: aggregate eval_passed, not raw passed
 sql_eval = """
 SELECT
+  level_id,
   level_name,
-  SUM(eval_count) AS eval_count
+  SUM(eval_passed) AS eval_count
 FROM public.vw_evaluations_by_level_by_season
 WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
@@ -200,8 +203,8 @@ ORDER BY level_id;
 """
 df_eval = pd.read_sql(sql_eval, engine, params={
     "season": season,
-    "ptso": selected_ptso,
-    "names": selected_name
+    "ptso":   selected_ptso,
+    "names":  selected_name
 })
 
 col_pie, col_bar = st.columns([1, 1.2], gap="large")
