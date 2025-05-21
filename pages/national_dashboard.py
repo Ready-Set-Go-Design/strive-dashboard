@@ -193,8 +193,7 @@ FROM public.vw_evaluations_by_level_by_season
 WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
   AND club_name = ANY(%(names)s)
-GROUP BY level_id, level_name
-ORDER BY level_id;
+GROUP BY level_id, level_name;
 """
 df_eval = pd.read_sql(sql_eval, engine, params={
     "season": season,
@@ -202,6 +201,25 @@ df_eval = pd.read_sql(sql_eval, engine, params={
     "names":  selected_name
 })
 
+# 1) Define the raw IDs in the exact order you want
+raw_ids     = [1, 34, 35, 36, 37, 38, 67, 68]
+display_lbl = [f"Level {i}" for i in range(1, 9)]
+
+# 2) Build mapping dicts
+order_map = {rid: idx for idx, rid in enumerate(raw_ids, start=1)}
+name_map  = {rid: lbl for rid, lbl in zip(raw_ids, display_lbl)}
+
+# 3) Apply to df_eval
+df_eval["sort_ord"]      = df_eval["level_id"].map(order_map)
+df_eval["display_level"] = df_eval["level_id"].map(name_map)
+
+# 4) Drop any rows not in our map, then sort
+df_eval = (
+    df_eval[df_eval["sort_ord"].notna()]
+    .sort_values("sort_ord")
+)
+
+# Now plot
 col_pie, col_bar = st.columns([1, 1.2], gap="large")
 
 with col_pie:
@@ -221,9 +239,7 @@ with col_pie:
                 ),
                 toolbox_opts=opts.ToolboxOpts(
                     orient="horizontal",
-                    item_size=18,
-                    item_gap=8,
-                    pos_left="10%",
+                    item_size=18, item_gap=8, pos_left="10%",
                     feature={
                         "saveAsImage": {"title": "save as image"},
                         "restore":     {"title": "restore"},
@@ -233,9 +249,7 @@ with col_pie:
                     }
                 )
             )
-            .set_series_opts(
-                label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff")
-            )
+            .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
         )
         html(pie.render_embed(), height=450, scrolling=False)
 
@@ -246,7 +260,7 @@ with col_bar:
     else:
         bar = (
             Bar(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add_xaxis(df_eval["level_name"].tolist())
+            .add_xaxis(df_eval["display_level"].tolist())
             .add_yaxis(
                 series_name="Evaluations",
                 y_axis=df_eval["eval_count"].tolist(),
@@ -261,10 +275,7 @@ with col_bar:
                     axislabel_opts=opts.LabelOpts(color="#ffffff")
                 ),
                 toolbox_opts=opts.ToolboxOpts(
-                    orient="horizontal",
-                    item_size=18,
-                    item_gap=8,
-                    pos_left="10%",
+                    orient="horizontal", item_size=18, item_gap=8, pos_left="10%",
                     feature={
                         "saveAsImage": {"title": "save as image"},
                         "restore":     {"title": "restore"},
@@ -276,6 +287,8 @@ with col_bar:
             )
         )
         html(bar.render_embed(), height=500, scrolling=False)
+
+
 
 # ─── 4) Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """

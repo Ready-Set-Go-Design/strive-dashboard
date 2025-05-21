@@ -232,118 +232,98 @@ from pyecharts.options import DataZoomOpts
 
 # ─── 2 & 3) Top-10 Clubs by Skiers with Eval Completion stacked below ─────────
 
-# 2a) TOP-10 CLUBS BY SKIER COUNT (unchanged)
-sql_top_clubs = """
+# ─── Top-10 Provinces by Skier Count ───────────────────────────
+sql_top_prov = """
 SELECT
-  club_name,
-  SUM(skiers) AS skier_total
+  ptso           AS province,
+  SUM(skiers)    AS skier_total
 FROM public.vw_club_summary_by_season
 WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
   AND status    = ANY(%(status)s)
   AND club_name = ANY(%(names)s)
-GROUP BY club_name
+GROUP BY ptso
 ORDER BY skier_total DESC
 LIMIT 10;
 """
-df_top = pd.read_sql(sql_top_clubs, engine, params={
+df_top_prov = pd.read_sql(sql_top_prov, engine, params={
     "season": season,
     "ptso":   selected_ptso,
     "status": selected_status,
     "names":  selected_name
 })
 
-# 3) EVALUATION COMPLETION RATE (all clubs, zoom/pan)
-sql_eval_rate = """
+st.subheader("Top 10 Provinces by Skier Count")
+if not df_top_prov.empty:
+    bar_prov = (
+        Bar(init_opts=opts.InitOpts(width="100%", height="600px", bg_color="#111111"))
+        .add_xaxis(df_top_prov["province"].tolist())
+        .add_yaxis("Skiers", df_top_prov["skier_total"].tolist(), category_gap="35%")
+        .reversal_axis()
+        .set_series_opts(label_opts=opts.LabelOpts(position="right", color="#ffffff"))
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
+            yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
+            toolbox_opts=opts.ToolboxOpts(feature={
+                "saveAsImage": {"title": "Save"},
+                "restore":     {"title": "Reset"}
+            })
+        )
+    )
+    html(bar_prov.render_embed(), height=600, scrolling=False)
+
+
+# ─── Evaluation Completion Rate by Province ─────────────────────
+sql_eval_rate_prov = """
 SELECT
-  club_name,
+  ptso                   AS province,
   SUM(evaluations_completed) AS evals_done,
-  SUM(skiers)                AS skiers
+  SUM(skiers)            AS skiers
 FROM public.vw_national_summary_by_season
 WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
   AND status    = ANY(%(status)s)
   AND club_name = ANY(%(names)s)
-GROUP BY club_name
+GROUP BY ptso
 HAVING SUM(skiers) > 0
 ORDER BY SUM(evaluations_completed)::numeric
        / NULLIF(SUM(skiers),0) DESC;
 """
-df_rate = pd.read_sql(sql_eval_rate, engine, params={
+df_rate_prov = pd.read_sql(sql_eval_rate_prov, engine, params={
     "season": season,
     "ptso":   selected_ptso,
     "status": selected_status,
     "names":  selected_name
 })
 
-col = st.columns([1])[0]
-with col:
-    # ─── Top 10 Clubs by Skiers (bigger) ───────────────────────────
-    st.subheader("Top 10 Clubs by Skier Count")
-    if not df_top.empty:
-        bar = (
-            Bar(init_opts=opts.InitOpts(
-                    width="100%",   # full container width
-                    height="800px", # taller chart
-                    bg_color="#111111"
-                ))
-            .add_xaxis(df_top["club_name"].tolist())
-            .add_yaxis("Skiers", df_top["skier_total"].tolist(), category_gap="35%")
-            .reversal_axis()
-            .set_series_opts(label_opts=opts.LabelOpts(position="right", color="#ffffff"))
-            .set_global_opts(
-                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-                toolbox_opts=opts.ToolboxOpts(feature={
-                    "saveAsImage": {"title": "save as image"},
-                    "restore":     {"title": "restore"}
-                })
-            )
-        )
-        html(bar.render_embed(), height=800, scrolling=False)
-
-
-# ─── Evaluation Completion Rate by Club (bigger + zoom/pan, white axis & legend text) ─────────────────────
-st.subheader("Evaluation Completion Rate by Club")
-if not df_rate.empty:
-    perc_done = [
+st.subheader("Evaluation Completion Rate by Province")
+if not df_rate_prov.empty:
+    perc_done_p = [
         round(row.evals_done / row.skiers * 100, 1)
-        for _, row in df_rate.iterrows()
+        for _, row in df_rate_prov.iterrows()
     ]
-    perc_rem = [round(100 - d, 1) for d in perc_done]
+    perc_rem_p = [round(100 - d, 1) for d in perc_done_p]
 
-    bar_percent = (
-        Bar(init_opts=opts.InitOpts(
-                width="100%",
-                height="800px",
-                theme=ThemeType.LIGHT
-            ))
-        .add_xaxis(df_rate["club_name"].tolist())
-        .add_yaxis("Completed %", perc_done, stack="stack1")
-        .add_yaxis("Remaining %", perc_rem,  stack="stack1")
+    bar_rate_prov = (
+        Bar(init_opts=opts.InitOpts(width="100%", height="600px", theme=ThemeType.LIGHT))
+        .add_xaxis(df_rate_prov["province"].tolist())
+        .add_yaxis("Completed %", perc_done_p, stack="stack1")
+        .add_yaxis("Remaining %", perc_rem_p,   stack="stack1")
         .reversal_axis()
-        .set_series_opts(
-            label_opts=opts.LabelOpts(position="insideRight", formatter="{c} %")
-        )
+        .set_series_opts(label_opts=opts.LabelOpts(position="insideRight", formatter="{c} %"))
         .set_global_opts(
             datazoom_opts=[DataZoomOpts(type_="slider", orient="vertical")],
-            legend_opts=opts.LegendOpts(
-                textstyle_opts=opts.TextStyleOpts(color="#ffffff")  # white legend text
-            ),
+            legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff")),
             xaxis_opts=opts.AxisOpts(
-                type_="value",
-                min_=0, max_=100,
-                axislabel_opts=opts.LabelOpts(color="#ffffff"),  # white axis labels
-                splitline_opts=opts.SplitLineOpts(is_show=True)
+                type_="value", min_=0, max_=100,
+                axislabel_opts=opts.LabelOpts(color="#ffffff")
             ),
             yaxis_opts=opts.AxisOpts(
                 type_="category",
-                axislabel_opts=opts.LabelOpts(color="#ffffff")   # white axis labels
+                axislabel_opts=opts.LabelOpts(color="#ffffff")
             ),
             tooltip_opts=opts.TooltipOpts(
-                trigger="axis",
-                axis_pointer_type="shadow",
-                formatter="{b0}: {c0} %"
+                trigger="axis", axis_pointer_type="shadow", formatter="{b0}: {c0} %"
             ),
             toolbox_opts=opts.ToolboxOpts(feature={
                 "saveAsImage": {"title": "Save"},
@@ -351,15 +331,18 @@ if not df_rate.empty:
             })
         )
     )
-    html(bar_percent.render_embed(), height=800, scrolling=False)
+    html(bar_rate_prov.render_embed(), height=600, scrolling=False)
 
 
 
-# ─── Pass-Rate % by Level (normal colors) ─────────────────────
+
+# ─── Pass-Rate % by Level (manual level order) ─────────────────────
 st.subheader("Pass-Rate % by Level")
 
+# 1) Fetch raw pass rates including the underlying level_id
 sql_pass_rate = """
 SELECT
+  level_id,
   level_name,
   ROUND(
     SUM(eval_passed)::numeric / NULLIF(SUM(eval_total),0) * 100,
@@ -369,10 +352,8 @@ FROM public.vw_evaluations_by_level_by_season
 WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
   AND club_name = ANY(%(names)s)
-GROUP BY level_name
-ORDER BY MIN(level_id);
+GROUP BY level_id, level_name;
 """
-
 df_pass = pd.read_sql(
     sql_pass_rate,
     engine,
@@ -383,45 +364,59 @@ df_pass = pd.read_sql(
     }
 )
 
+# 2) Define the exact raw IDs → display order & labels
+raw_ids     = [1, 34, 35, 36, 37, 38, 67, 68]
+display_lbl = [f"Level {i}" for i in range(1, 9)]
+order_map   = {rid: idx for idx, rid in enumerate(raw_ids, start=1)}
+label_map   = {rid: lbl for rid, lbl in zip(raw_ids, display_lbl)}
 
-if not df_pass.empty:
+# 3) Map & sort
+df_pass["sort_ord"]      = df_pass["level_id"].map(order_map)
+df_pass["display_level"] = df_pass["level_id"].map(label_map)
+df_pass = df_pass[df_pass["sort_ord"].notna()]\
+             .sort_values("sort_ord")
+
+if df_pass.empty:
+    st.info("No pass-rate data for the selected filters.")
+else:
+    # 4) Build the Nightingale-Rose with correctly ordered & labeled slices
     data_pairs = list(zip(
-        df_pass["level_name"].tolist(),
-        df_pass["pass_pct"].round(1).tolist()
+        df_pass["display_level"].tolist(),
+        df_pass["pass_pct"].tolist()
     ))
 
     pie_pass = (
-    Pie(init_opts=opts.InitOpts(width="100%", height="600px"))  # ← larger canvas
-    .add(
-        series_name="Pass %",
-        data_pair=data_pairs,
-        radius=["15%", "65%"],
-        center=["55%", "50%"],
-        rosetype="radius",
-        label_opts=opts.LabelOpts(
-            formatter="{b}\n{c} %",
-            position="outside"
+        Pie(init_opts=opts.InitOpts(width="100%", height="600px"))
+        .add(
+            series_name="Pass %",
+            data_pair=data_pairs,
+            radius=["15%", "65%"],
+            center=["55%", "50%"],
+            rosetype="radius",
+            label_opts=opts.LabelOpts(
+                formatter="{b}\n{c} %",
+                position="outside"
+            )
+        )
+        .set_global_opts(
+            legend_opts=opts.LegendOpts(
+                orient="vertical",
+                pos_left="left",
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+            ),
+            toolbox_opts=opts.ToolboxOpts(
+                orient="horizontal",
+                pos_left="10%",
+                feature={
+                    "saveAsImage": {"title": "Save"},
+                    "restore":     {"title": "Reset"}
+                }
+            )
         )
     )
-    .set_global_opts(
-        legend_opts=opts.LegendOpts(
-            orient="vertical",
-            pos_left="left",
-            textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-        ),
-        toolbox_opts=opts.ToolboxOpts(
-            orient="horizontal",
-            pos_left="10%",
-            feature={
-                "saveAsImage": {"title": "Save"},
-                "restore":     {"title": "Reset"}
-            }
-        )
-    )
-)
 
-# make the embed taller to match
-html(pie_pass.render_embed(), height=600, scrolling=False)
+    html(pie_pass.render_embed(), height=600, scrolling=False)
+
 
 # ─── 5) User Activity & Retention by Province ─────────────────────────────
 st.subheader("User Activity & Retention by Province")
