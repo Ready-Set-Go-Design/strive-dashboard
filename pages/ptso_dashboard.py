@@ -37,8 +37,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-
 # ─── Widen canvas & remove zoom ────────────────────────────
 st.markdown(
     """
@@ -96,7 +94,6 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 
-
 st.markdown(
     """
     <style>
@@ -120,7 +117,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # ─── Banner with logo + title ──────────────────────────────
 logo_path = "Alpine_Canada_logo.svg.png"
 with open(logo_path, "rb") as f:
@@ -133,45 +129,43 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ─── Sidebar filters ───────────────────────────────────────
-st.sidebar.markdown("## Filters")
-# wrap filters so our CSS only affects them
-st.sidebar.markdown('<div class="right-filters">', unsafe_allow_html=True)
+# ─── Filter popover (replaces sidebar filters) ───────────────────────────
+# Pre-fetch options
+target_season = "2024/2025"
 
-# Season (single-select)
-season = st.sidebar.selectbox("Select Season", ["2024/2025"])
-
-# PTSO (single-select dropdown with “All”)
-sql_ptso = """
+# PTSO options
+tsql_ptso = """
 SELECT DISTINCT ptso
 FROM public.vw_club_summary_by_season
 WHERE season = %(season)s
 ORDER BY ptso;
 """
-ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
+ptso_df = pd.read_sql(tsql_ptso, engine, params={"season": target_season})
 ptso_options = ptso_df["ptso"].dropna().tolist()
-ptso_choice = st.sidebar.selectbox("Filter by PTSO", ["All"] + ptso_options)
-selected_ptso = ptso_options if ptso_choice == "All" else [ptso_choice]
 
-# Status (single-select dropdown with “All”)
+# Status options
 status_choices = ["Active", "Inactive"]
-status_choice = st.sidebar.selectbox("Filter by Status", ["All"] + status_choices)
-selected_status = status_choices if status_choice == "All" else [status_choice]
 
-# Club Name (single-select dropdown with “All”)
-sql_names = """
+# Club Name options
+nsql = """
 SELECT DISTINCT club_name
 FROM public.vw_club_summary_by_season
 WHERE season = %(season)s
 ORDER BY club_name;
 """
-names_df = pd.read_sql(sql_names, engine, params={"season": season})
+names_df = pd.read_sql(nsql, engine, params={"season": target_season})
 name_options = names_df["club_name"].tolist()
-name_choice = st.sidebar.selectbox("Filter by Club Name", ["All"] + name_options)
+
+with st.popover("Filters", icon=":material/filter_list:"):
+    season = st.selectbox("Select Season", [target_season])
+    ptso_choice = st.selectbox("Filter by PTSO", ["All"] + ptso_options)
+    status_choice = st.selectbox("Filter by Status", ["All"] + status_choices)
+    name_choice = st.selectbox("Filter by Club Name", ["All"] + name_options)
+
+# Derive selected lists for SQL params
+selected_ptso = ptso_options if ptso_choice == "All" else [ptso_choice]
+selected_status = status_choices if status_choice == "All" else [status_choice]
 selected_name = name_options if name_choice == "All" else [name_choice]
-
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
-
 
 # ─── 1) Provincial summary metrics ──────────────────────────
 sql_ptso_sum = """
@@ -233,8 +227,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-
 from pyecharts.options import DataZoomOpts
+
 
 # ─── 2 & 3) Top-10 Clubs by Skiers with Eval Completion stacked below ─────────
 
@@ -309,56 +303,60 @@ with col:
         html(bar.render_embed(), height=800, scrolling=False)
 
 
-    # ─── Evaluation Completion Rate by Club (bigger + zoom/pan) ─────────────────────
-    st.subheader("Evaluation Completion Rate by Club")
-    if not df_rate.empty:
-        perc_done = [
-            round(row.evals_done / row.skiers * 100, 1)
-            for _, row in df_rate.iterrows()
-        ]
-        perc_rem = [round(100 - d, 1) for d in perc_done]
+# ─── Evaluation Completion Rate by Club (bigger + zoom/pan, white axis & legend text) ─────────────────────
+st.subheader("Evaluation Completion Rate by Club")
+if not df_rate.empty:
+    perc_done = [
+        round(row.evals_done / row.skiers * 100, 1)
+        for _, row in df_rate.iterrows()
+    ]
+    perc_rem = [round(100 - d, 1) for d in perc_done]
 
-        bar_percent = (
-            Bar(init_opts=opts.InitOpts(
-                    width="100%",
-                    height="800px",
-                    theme=ThemeType.LIGHT
-                ))
-            .add_xaxis(df_rate["club_name"].tolist())
-            .add_yaxis("Completed %", perc_done, stack="stack1")
-            .add_yaxis("Remaining %", perc_rem,  stack="stack1")
-            .reversal_axis()
-            .set_series_opts(
-                label_opts=opts.LabelOpts(position="insideRight", formatter="{c} %")
-            )
-            .set_global_opts(
-                datazoom_opts=[DataZoomOpts(type_="slider", orient="vertical")],
-                xaxis_opts=opts.AxisOpts(
-                    type_="value",
-                    min_=0, max_=100,
-                    axislabel_opts=opts.LabelOpts(color="#333333"),
-                    splitline_opts=opts.SplitLineOpts(is_show=True)
-                ),
-                yaxis_opts=opts.AxisOpts(
-                    type_="category",
-                    axislabel_opts=opts.LabelOpts(color="#333333")
-                ),
-                tooltip_opts=opts.TooltipOpts(
-                    trigger="axis",
-                    axis_pointer_type="shadow",
-                    formatter="{b0}: {c0} %"
-                ),
-                toolbox_opts=opts.ToolboxOpts(feature={
-                    "saveAsImage": {"title": "Save"},
-                    "restore":     {"title": "Reset"}
-                })
-            )
+    bar_percent = (
+        Bar(init_opts=opts.InitOpts(
+                width="100%",
+                height="800px",
+                theme=ThemeType.LIGHT
+            ))
+        .add_xaxis(df_rate["club_name"].tolist())
+        .add_yaxis("Completed %", perc_done, stack="stack1")
+        .add_yaxis("Remaining %", perc_rem,  stack="stack1")
+        .reversal_axis()
+        .set_series_opts(
+            label_opts=opts.LabelOpts(position="insideRight", formatter="{c} %")
         )
-        html(bar_percent.render_embed(), height=800, scrolling=False)
+        .set_global_opts(
+            datazoom_opts=[DataZoomOpts(type_="slider", orient="vertical")],
+            legend_opts=opts.LegendOpts(
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff")  # white legend text
+            ),
+            xaxis_opts=opts.AxisOpts(
+                type_="value",
+                min_=0, max_=100,
+                axislabel_opts=opts.LabelOpts(color="#ffffff"),  # white axis labels
+                splitline_opts=opts.SplitLineOpts(is_show=True)
+            ),
+            yaxis_opts=opts.AxisOpts(
+                type_="category",
+                axislabel_opts=opts.LabelOpts(color="#ffffff")   # white axis labels
+            ),
+            tooltip_opts=opts.TooltipOpts(
+                trigger="axis",
+                axis_pointer_type="shadow",
+                formatter="{b0}: {c0} %"
+            ),
+            toolbox_opts=opts.ToolboxOpts(feature={
+                "saveAsImage": {"title": "Save"},
+                "restore":     {"title": "Reset"}
+            })
+        )
+    )
+    html(bar_percent.render_embed(), height=800, scrolling=False)
 
 
-# ─── Pass‑Rate % by Level (from the new view) ──────────────
-st.subheader("Pass‑Rate % by Level")
+
+# ─── Pass-Rate % by Level (normal colors) ─────────────────────
+st.subheader("Pass-Rate % by Level")
 
 sql_pass_rate = """
 SELECT
@@ -372,7 +370,7 @@ WHERE season    = %(season)s
   AND ptso      = ANY(%(ptso)s)
   AND club_name = ANY(%(names)s)
 GROUP BY level_name
-ORDER BY MIN(level_id);          -- keeps logical order
+ORDER BY MIN(level_id);
 """
 
 df_pass = pd.read_sql(
@@ -385,43 +383,31 @@ df_pass = pd.read_sql(
     }
 )
 
-if df_pass.empty:
-    st.info("No pass‑rate data for the selected filters.")
-else:
-    # ── Nightingale‑Rose (polar pie) instead of bar ─────────
-    # ── Light‑theme Nightingale‑Rose chart ─────────────────────
-    data_pairs = list(
-    zip(df_pass["level_name"].tolist(), df_pass["pass_pct"].round(1).tolist())
-)
 
-# pastel palette by pass‑rate band
-rose_colors = [
-    "#ff9e9e" if pct < 50      # soft red
-    else "#ffdd8d" if pct < 75 # soft orange/yellow
-    else "#7ed6c8"             # soft teal
-    for _, pct in data_pairs
-]
+if not df_pass.empty:
+    data_pairs = list(zip(
+        df_pass["level_name"].tolist(),
+        df_pass["pass_pct"].round(1).tolist()
+    ))
 
-pie_rose = (
-    Pie(init_opts=opts.InitOpts(bg_color="#f5f5f5"))  # ← lighter canvas
+    pie_pass = (
+    Pie(init_opts=opts.InitOpts(width="100%", height="600px"))  # ← larger canvas
     .add(
-        series_name="Pass %",
+        series_name="Pass %",
         data_pair=data_pairs,
         radius=["15%", "65%"],
         center=["55%", "50%"],
         rosetype="radius",
         label_opts=opts.LabelOpts(
-            formatter="{b}\n{c} %",
-            position="outside",
-            color="#333333"      # dark text on light bg
-        ),
-        itemstyle_opts=opts.ItemStyleOpts(color=rose_colors)
+            formatter="{b}\n{c} %",
+            position="outside"
+        )
     )
     .set_global_opts(
         legend_opts=opts.LegendOpts(
             orient="vertical",
             pos_left="left",
-            textstyle_opts=opts.TextStyleOpts(color="#333333")
+            textstyle_opts=opts.TextStyleOpts(color="#ffffff")
         ),
         toolbox_opts=opts.ToolboxOpts(
             orient="horizontal",
@@ -434,12 +420,135 @@ pie_rose = (
     )
 )
 
-html(pie_rose.render_embed(), height=500, scrolling=False)
+# make the embed taller to match
+html(pie_pass.render_embed(), height=600, scrolling=False)
+
+# ─── 5) User Activity & Retention by Province ─────────────────────────────
+st.subheader("User Activity & Retention by Province")
+
+# Fetch monthly sign-ups and active users by province, filtered by your popover
+sql_activity = """
+WITH
+  signups AS (
+    SELECT
+      date_trunc('month', u.created_at)::date AS month,
+      c.ptso AS province,
+      COUNT(u.id) AS signups
+    FROM users u
+    JOIN clubs c ON c.id = u.club_id
+    WHERE u.created_at >= date_trunc('year', CURRENT_DATE)
+      AND c.ptso      = ANY(%(ptso)s)
+      AND c.name      = ANY(%(names)s)
+    GROUP BY 1, 2
+  ),
+  actives AS (
+    SELECT
+      date_trunc('month', u.last_login)::date AS month,
+      c.ptso AS province,
+      COUNT(DISTINCT u.id) AS active_users
+    FROM users u
+    JOIN clubs c ON c.id = u.club_id
+    WHERE u.last_login >= date_trunc('year', CURRENT_DATE)
+      AND c.ptso      = ANY(%(ptso)s)
+      AND c.name      = ANY(%(names)s)
+    GROUP BY 1, 2
+  )
+SELECT
+  s.month,
+  s.province,
+  s.signups,
+  COALESCE(a.active_users, 0) AS active_users
+FROM signups s
+LEFT JOIN actives a
+  ON s.month    = a.month
+ AND s.province = a.province
+ORDER BY s.month;
+"""
+
+df_activity = pd.read_sql(
+    sql_activity,
+    engine,
+    params={
+      "ptso":  selected_ptso,
+      "names": selected_name
+    }
+)
+
+# force month to datetime for dt accessor
+df_activity["month"] = pd.to_datetime(df_activity["month"])
+
+if df_activity.empty:
+    st.info("No activity data for the current filters.")
+else:
+    # aggregate across all provinces by month
+    df_tot = (
+        df_activity
+        .groupby("month", as_index=False)[["signups", "active_users"]]
+        .sum()
+        .sort_values("month")
+    )
+    months  = df_tot["month"].dt.strftime("%Y-%m").tolist()
+    signups = df_tot["signups"].tolist()
+    active  = df_tot["active_users"].tolist()
+
+    # …then build your pyecharts.Line exactly as before…
 
 
+    from pyecharts.charts import Line
+    from pyecharts import options as opts
 
-
-
+    line = (
+        Line(init_opts=opts.InitOpts(width="100%", height="500px"))
+        .add_xaxis(months)
+        .add_yaxis(
+            "Sign-ups",
+            signups,
+            yaxis_index=0,
+            label_opts=opts.LabelOpts(is_show=False),
+        )
+        .extend_axis(
+            yaxis=opts.AxisOpts(
+                name="Active Users",
+                position="right",
+                axislabel_opts=opts.LabelOpts(color="#ffffff"),
+                axisline_opts=opts.AxisLineOpts(
+                    linestyle_opts=opts.LineStyleOpts(color="#ffffff")
+                ),
+            )
+        )
+        .add_yaxis(
+            "Active Users",
+            active,
+            yaxis_index=1,
+            label_opts=opts.LabelOpts(is_show=False),
+        )
+        .set_series_opts(
+            linestyle_opts=opts.LineStyleOpts(width=3),
+            label_opts=opts.LabelOpts(color="#ffffff"),
+        )
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(
+                type_="category",
+                axislabel_opts=opts.LabelOpts(color="#ffffff"),
+            ),
+            yaxis_opts=opts.AxisOpts(
+                name="Sign-ups",
+                axislabel_opts=opts.LabelOpts(color="#ffffff"),
+                axisline_opts=opts.AxisLineOpts(
+                    linestyle_opts=opts.LineStyleOpts(color="#ffffff")
+                ),
+            ),
+            legend_opts=opts.LegendOpts(
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
+            ),
+            tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"),
+            toolbox_opts=opts.ToolboxOpts(feature={
+                "saveAsImage": {"title": "Save"},
+                "restore":     {"title": "Reset"}
+            })
+        )
+    )
+    html(line.render_embed(), height=500, scrolling=False)
 
 # ─── 4) Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """
@@ -539,3 +648,4 @@ else:
     )
 
     st.markdown("</div>", unsafe_allow_html=True)
+

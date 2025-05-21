@@ -84,45 +84,42 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ─── Sidebar filters ───────────────────────────────────────
-st.sidebar.markdown("## Filters")
-# wrap filters so our CSS only affects them
-st.sidebar.markdown('<div class="right-filters">', unsafe_allow_html=True)
+# ─── Filter popover (replaces sidebar filters) ───────────────────────────
+target_season = "2024/2025"
 
-# Season (single-select)
-season = st.sidebar.selectbox("Select Season", ["2024/2025"])
-
-# PTSO (single-select dropdown with “All”)
-sql_ptso = """
+# Fetch PTSO options
+tsql_ptso = """
 SELECT DISTINCT ptso
 FROM public.vw_club_summary_by_season
 WHERE season = %(season)s
 ORDER BY ptso;
 """
-ptso_df = pd.read_sql(sql_ptso, engine, params={"season": season})
+ptso_df = pd.read_sql(tsql_ptso, engine, params={"season": target_season})
 ptso_options = ptso_df["ptso"].dropna().tolist()
-ptso_choice = st.sidebar.selectbox("Filter by PTSO", ["All"] + ptso_options)
-selected_ptso = ptso_options if ptso_choice == "All" else [ptso_choice]
 
-# Status (single-select dropdown with “All”)
+# Status options
 status_choices = ["Active", "Inactive"]
-status_choice = st.sidebar.selectbox("Filter by Status", ["All"] + status_choices)
-selected_status = status_choices if status_choice == "All" else [status_choice]
 
-# Club Name (single-select dropdown with “All”)
-sql_names = """
+# Fetch Club Name options
+nsql = """
 SELECT DISTINCT club_name
 FROM public.vw_club_summary_by_season
 WHERE season = %(season)s
 ORDER BY club_name;
 """
-names_df = pd.read_sql(sql_names, engine, params={"season": season})
+names_df = pd.read_sql(nsql, engine, params={"season": target_season})
 name_options = names_df["club_name"].tolist()
-name_choice = st.sidebar.selectbox("Filter by Club Name", ["All"] + name_options)
+
+with st.popover("Filters", icon=":material/filter_list:"):
+    season = st.selectbox("Select Season", [target_season])
+    ptso_choice = st.selectbox("Filter by PTSO", ["All"] + ptso_options)
+    status_choice = st.selectbox("Filter by Status", ["All"] + status_choices)
+    name_choice = st.selectbox("Filter by Club Name", ["All"] + name_options)
+
+# Derive selections for SQL parameters
+selected_ptso = ptso_options if ptso_choice == "All" else [ptso_choice]
+selected_status = status_choices if status_choice == "All" else [status_choice]
 selected_name = name_options if name_choice == "All" else [name_choice]
-
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
-
 
 # ─── 1) Summary metrics ────────────────────────────────────
 sql_sum = """
@@ -170,7 +167,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── 2 & 3) Charts side by side ────────────────────────────
-# Skier distribution (unchanged)
 sql_dist = """
 SELECT
   level_name,
@@ -188,7 +184,6 @@ df_dist = pd.read_sql(sql_dist, engine, params={
     "names":  selected_name
 })
 
-# ←── Edited evaluations query: aggregate eval_passed, not raw passed
 sql_eval = """
 SELECT
   level_id,
@@ -308,6 +303,7 @@ if selected_status:
     mask &= df_clubs["status"].isin(selected_status)
 if selected_name:
     mask &= df_clubs["club_name"].isin(selected_name)
+
 df_clubs = df_clubs[mask]
 
 st.subheader("Clubs")
@@ -318,7 +314,6 @@ if search_term:
 if df_clubs.empty:
     st.info("No clubs data for this season.")
 else:
-    # prepare display DataFrame
     df_display = (
         df_clubs.rename(columns={
             "club_id": "ID",
@@ -334,7 +329,6 @@ else:
         .set_index("ID")
     )
 
-    # CSV download button
     btn_col, _ = st.columns([1, 8])
     with btn_col:
         csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
@@ -346,7 +340,6 @@ else:
             use_container_width=False
         )
 
-    # inject full-bleed CSS & force grid width
     st.markdown(
         """
         <style>
@@ -358,24 +351,21 @@ else:
         unsafe_allow_html=True,
     )
 
-    # build AG Grid options
     gb = GridOptionsBuilder.from_dataframe(df_display)
     gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
     grid_options = gb.build()
 
-    # wrap AG Grid in full-viewport container
     st.markdown(
         '<div style="position: relative; left:50%; transform: translateX(-50%); width:100vw; overflow-x:auto;">',
         unsafe_allow_html=True,
     )
 
-    # render AG Grid full-width & taller
     AgGrid(
         df_display,
         gridOptions=grid_options,
         theme="streamlit",
-        height=1000,       # increased height
+        height=1000,
         fit_columns_on_grid_load=True,
     )
 
