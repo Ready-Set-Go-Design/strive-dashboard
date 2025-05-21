@@ -4,8 +4,10 @@ import base64
 from utils.db import engine
 from st_aggrid import AgGrid, GridOptionsBuilder  # for the interactive table
 import pyecharts.options as opts
-from pyecharts.charts import Pie, Bar
+from pyecharts.charts import Pie, Bar, Line
 from streamlit.components.v1 import html  # built-in
+from pyecharts.commons.utils import JsCode
+from pyecharts.globals import ThemeType
 
 # ─── Page config ───────────────────────────────────────────
 st.set_page_config(
@@ -13,6 +15,26 @@ st.set_page_config(
     page_icon="🏔️",
     layout="wide",
     initial_sidebar_state="expanded"
+)
+
+# ─── Widen canvas & apply scale to block-container only ───────────────────
+st.markdown(
+    """
+    <style>
+      /* Scale just the main content area */
+      .reportview-container .main .block-container {
+        transform: scale(0.80);
+        transform-origin: top left;
+        max-width: 100% !important;
+        padding: 1rem 2rem;
+      }
+      /* Remove any zoom on html/body so dropdowns calculate correctly */
+      /* html, body, .reportview-container .main .block-container {
+           zoom: 0.85 !important;
+      } */
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ─── Widen canvas & remove zoom ────────────────────────────
@@ -71,6 +93,9 @@ st.markdown("""<style>
   color: #fafafa;
 }
 </style>""", unsafe_allow_html=True)
+
+
+
 
 # ─── Banner with logo + title ──────────────────────────────
 logo_path = "Alpine_Canada_logo.svg.png"
@@ -185,8 +210,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ─── 2 & 3) Provincial charts side by side ────────────────
-# 2a) TOP‑10 CLUBS BY SKIER COUNT ---------------------------
+from pyecharts.options import DataZoomOpts
+
+# ─── 2 & 3) Top-10 Clubs by Skiers with Eval Completion stacked below ─────────
+
+# 2a) TOP-10 CLUBS BY SKIER COUNT (unchanged)
 sql_top_clubs = """
 SELECT
   club_name,
@@ -207,65 +235,7 @@ df_top = pd.read_sql(sql_top_clubs, engine, params={
     "names":  selected_name
 })
 
-# 2b) 5‑YEAR TREND OF TOTAL SKIERS --------------------------
-#   • grab the first season part (e.g. "2024" from "2024/2025")
-season_start = int(season.split("/")[0])
-season_list  = [f"{yr}/{yr+1}" for yr in range(season_start - 4, season_start + 1)]
-
-sql_trend = """
-SELECT
-  season,
-  SUM(skiers) AS total_skiers
-FROM public.vw_national_summary_by_season
-WHERE season    = ANY(%(season_range)s)
-  AND ptso      = ANY(%(ptso)s)
-  AND status    = ANY(%(status)s)
-GROUP BY season
-ORDER BY season;
-"""
-df_trend = pd.read_sql(sql_trend, engine, params={
-    "season_range": season_list,
-    "ptso":         selected_ptso,
-    "status":       selected_status
-})
-
-# ─── build the two charts in Streamlit columns ─────────────
-col_left, col_right = st.columns([1, 1], gap="large")
-
-# ---- Left: Top‑10 bar ------------------------------------
-with col_left:
-    st.subheader("Top 10 Clubs by Skier Count")
-    if df_top.empty:
-        st.info("No club data for the selected filters.")
-    else:
-        bar = (
-            Bar(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add_xaxis(df_top["club_name"].tolist())
-            .add_yaxis(
-                series_name="Skiers",
-                y_axis=df_top["skier_total"].tolist(),
-                category_gap="35%"
-            )
-            .reversal_axis()  # horizontal bars
-            .set_series_opts(
-                label_opts=opts.LabelOpts(position="right", color="#ffffff")
-            )
-            .set_global_opts(
-                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-                toolbox_opts=opts.ToolboxOpts(
-                    orient="horizontal",
-                    pos_left="10%",
-                    feature={
-                        "saveAsImage": {"title": "save as image"},
-                        "restore":     {"title": "restore"}
-                    }
-                )
-            )
-        )
-        html(bar.render_embed(), height=500, scrolling=False)
-
-# ---- Right: Evaluation Completion % by Club ---------------
+# 3) EVALUATION COMPLETION RATE (all clubs, zoom/pan)
 sql_eval_rate = """
 SELECT
   club_name,
@@ -279,10 +249,8 @@ WHERE season    = %(season)s
 GROUP BY club_name
 HAVING SUM(skiers) > 0
 ORDER BY SUM(evaluations_completed)::numeric
-       / NULLIF(SUM(skiers),0) DESC      -- ← use the full expression
-LIMIT 10;
+       / NULLIF(SUM(skiers),0) DESC;
 """
-
 df_rate = pd.read_sql(sql_eval_rate, engine, params={
     "season": season,
     "ptso":   selected_ptso,
@@ -290,48 +258,79 @@ df_rate = pd.read_sql(sql_eval_rate, engine, params={
     "names":  selected_name
 })
 
-with col_right:
-    st.subheader("Evaluation Completion Rate by Club")
-    if df_rate.empty:
-        st.info("No evaluation data for the selected filters.")
-    else:
-        # calculate percentage
-        df_rate["pct"] = df_rate["evals_done"] / df_rate["skiers"] * 100
+col = st.columns([1])[0]
+with col:
+    # ─── Top 10 Clubs by Skiers (bigger) ───────────────────────────
+    st.subheader("Top 10 Clubs by Skier Count")
+    if not df_top.empty:
         bar = (
-            Bar(init_opts=opts.InitOpts(bg_color="#111111"))
-            .add_xaxis(df_rate["club_name"].tolist())
-            .add_yaxis(
-                series_name="Completion %",
-                y_axis=df_rate["pct"].round(1).tolist(),
-                category_gap="35%"
-            )
-            .reversal_axis()   # horizontal bars
-            .set_series_opts(
-                label_opts=opts.LabelOpts(
-                    position="right",
-                    formatter="{c}%",
-                    color="#ffffff"
-                )
-            )
+            Bar(init_opts=opts.InitOpts(
+                    width="100%",   # full container width
+                    height="800px", # taller chart
+                    bg_color="#111111"
+                ))
+            .add_xaxis(df_top["club_name"].tolist())
+            .add_yaxis("Skiers", df_top["skier_total"].tolist(), category_gap="35%")
+            .reversal_axis()
+            .set_series_opts(label_opts=opts.LabelOpts(position="right", color="#ffffff"))
             .set_global_opts(
-                xaxis_opts=opts.AxisOpts(
-                    axislabel_opts=opts.LabelOpts(color="#ffffff"),
-                    max_=100
-                ),
-                yaxis_opts=opts.AxisOpts(
-                    axislabel_opts=opts.LabelOpts(color="#ffffff")
-                ),
-                toolbox_opts=opts.ToolboxOpts(
-                    orient="horizontal",
-                    pos_left="10%",
-                    feature={
-                        "saveAsImage": {"title": "save as image"},
-                        "restore":     {"title": "restore"}
-                    }
-                )
+                xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
+                yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
+                toolbox_opts=opts.ToolboxOpts(feature={
+                    "saveAsImage": {"title": "save as image"},
+                    "restore":     {"title": "restore"}
+                })
             )
         )
-        html(bar.render_embed(), height=500, scrolling=False)
+        html(bar.render_embed(), height=800, scrolling=False)
+
+
+    # ─── Evaluation Completion Rate by Club (bigger + zoom/pan) ─────────────────────
+    st.subheader("Evaluation Completion Rate by Club")
+    if not df_rate.empty:
+        perc_done = [
+            round(row.evals_done / row.skiers * 100, 1)
+            for _, row in df_rate.iterrows()
+        ]
+        perc_rem = [round(100 - d, 1) for d in perc_done]
+
+        bar_percent = (
+            Bar(init_opts=opts.InitOpts(
+                    width="100%",
+                    height="800px",
+                    theme=ThemeType.LIGHT
+                ))
+            .add_xaxis(df_rate["club_name"].tolist())
+            .add_yaxis("Completed %", perc_done, stack="stack1")
+            .add_yaxis("Remaining %", perc_rem,  stack="stack1")
+            .reversal_axis()
+            .set_series_opts(
+                label_opts=opts.LabelOpts(position="insideRight", formatter="{c} %")
+            )
+            .set_global_opts(
+                datazoom_opts=[DataZoomOpts(type_="slider", orient="vertical")],
+                xaxis_opts=opts.AxisOpts(
+                    type_="value",
+                    min_=0, max_=100,
+                    axislabel_opts=opts.LabelOpts(color="#333333"),
+                    splitline_opts=opts.SplitLineOpts(is_show=True)
+                ),
+                yaxis_opts=opts.AxisOpts(
+                    type_="category",
+                    axislabel_opts=opts.LabelOpts(color="#333333")
+                ),
+                tooltip_opts=opts.TooltipOpts(
+                    trigger="axis",
+                    axis_pointer_type="shadow",
+                    formatter="{b0}: {c0} %"
+                ),
+                toolbox_opts=opts.ToolboxOpts(feature={
+                    "saveAsImage": {"title": "Save"},
+                    "restore":     {"title": "Reset"}
+                })
+            )
+        )
+        html(bar_percent.render_embed(), height=800, scrolling=False)
 
 
 # ─── Pass‑Rate % by Level (from the new view) ──────────────
