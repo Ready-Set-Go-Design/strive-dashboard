@@ -26,7 +26,7 @@ st.markdown(
       }
       /* reset zoom */
       html, body, .reportview-container .main .block-container {
-        zoom: 0.85 !important;
+        zoom: 0.80 !important;
       }
     </style>
     """,

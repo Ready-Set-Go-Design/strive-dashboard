@@ -30,12 +30,14 @@ st.markdown(
       }
       /* Remove any zoom on html/body so dropdowns calculate correctly */
       /* html, body, .reportview-container .main .block-container {
-           zoom: 0.85 !important;
+           zoom: 0.80 !important;
       } */
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
 
 # ─── Widen canvas & remove zoom ────────────────────────────
 st.markdown(
@@ -95,6 +97,28 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 
+st.markdown(
+    """
+    <style>
+      /* 1) Let the sidebar container overflow so nothing inside it clips children */
+      [data-testid="stSidebar"] {
+        overflow: visible !important;
+      }
+
+      /* 2) Pull every BaseWeb popover out of the sidebar's stacking context
+            and force it to the right edge of the viewport */
+      .baseui-popover__popper {
+        position: fixed !important;
+        left: auto     !important;
+        right: 16px    !important;  /* tweak as needed */
+        top: auto      !important;
+        z-index: 9999  !important;
+        transform-origin: top right !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ─── Banner with logo + title ──────────────────────────────
