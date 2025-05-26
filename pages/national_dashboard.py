@@ -82,11 +82,6 @@ ORDER BY club_name;
 names_df = pd.read_sql(nsql_clubs, engine, params={"season": target_season})
 name_options = names_df["club_name"].tolist()
 
-# ─── SIDEBAR LOGO & FILTERS ────────────────────────────
-st.sidebar.image(
-    r"C:\Users\Owner\Desktop\strive\strive-dashboard\rsg_logo.jpg",
-    width=200
-)
 
 
 # Basic filters
