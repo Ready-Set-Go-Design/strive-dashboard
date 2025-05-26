@@ -20,11 +20,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ─── Sidebar Branding ────────────────────────────────────
-st.sidebar.image(
-    r"C:\Users\Owner\Desktop\strive\strive-dashboard\rsg_logo.jpg",
-    use_container_width=True
-)
+
 st.sidebar.markdown("## Welcome to Strive Dashboard")
 
 # ─── Manual page links ───────────────────────────────────
