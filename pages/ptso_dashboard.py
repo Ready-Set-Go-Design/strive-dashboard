@@ -560,17 +560,15 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-    gb = GridOptionsBuilder.from_dataframe(df_display)
-    gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
-    grid_options = gb.build()
+gb = GridOptionsBuilder.from_dataframe(df_display)
+gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
+gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+gb.configure_grid_options(domLayout="autoHeight")
+grid_options = gb.build()
 
-    st.markdown('<div style="position: relative; left:50%; transform: translateX(-50%); width:100vw; overflow-x:auto;">', unsafe_allow_html=True)
-    AgGrid(
-        df_display,
-        gridOptions=grid_options,
-        theme="streamlit",
-        height=1000,
-        fit_columns_on_grid_load=True
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+AgGrid(
+    df_display,
+    gridOptions=grid_options,
+    theme="streamlit",
+    fit_columns_on_grid_load=True  # no explicit height → autoHeight will size it
+)
