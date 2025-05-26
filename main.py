@@ -11,7 +11,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-      /* Max-width for the main block container */
       .reportview-container .main .block-container {
         max-width: 1440px;
         margin: auto;
@@ -21,30 +20,30 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ─── Sidebar Branding & Page Links ───────────────────────
-# Logo at very top of sidebar
+# ─── Sidebar Branding ────────────────────────────────────
 st.sidebar.image(
     r"C:\Users\Owner\Desktop\strive\strive-dashboard\rsg_logo.jpg",
     use_container_width=True
 )
-# Optional welcome text
 st.sidebar.markdown("## Welcome to Strive Dashboard")
 
-# Move the “Pages” list into the sidebar below the logo
-st.sidebar.markdown(
-    """
-    **Navigate:**  
-    - National Dashboard  
-    - PTSO Dashboard  
-    - Club Dashboard  
-    """
+# ─── Manual page links ───────────────────────────────────
+st.sidebar.markdown("**Navigate:**")
+st.sidebar.page_link(
+    "pages/National Dashboard.py",
+    label="National Dashboard",
+    icon="🏠"
+)
+st.sidebar.page_link(
+    "pages/PTSO Dashboard.py",
+    label="PTSO Dashboard",
+    icon="📊"
 )
 
-# ─── Welcome Message ────────────────────────────────────
+# ─── Main content ────────────────────────────────────────
 st.title("🏔️ Strive Dashboard")
 st.write(
     """
-    Use the **Pages** menu in the top-left corner to switch between dashboards,
-    or click the links in the sidebar above.
+    Use the **Navigate** links in the sidebar to switch between dashboards.
     """
 )

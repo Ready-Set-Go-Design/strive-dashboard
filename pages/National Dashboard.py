@@ -7,13 +7,17 @@ import pyecharts.options as opts
 from pyecharts.charts import Pie, Bar
 from streamlit.components.v1 import html
 
-# ─── Page config ───────────────────────────────────────────
+
+from utils.sidebar import render_nav
+
 st.set_page_config(
     page_title="National Dashboard",
     page_icon="🏔️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+render_nav()
 
 # ─── GLOBAL CSS ─────────────────────────────────────────────
 st.markdown(

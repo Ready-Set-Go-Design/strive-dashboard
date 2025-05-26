@@ -9,13 +9,16 @@ from streamlit.components.v1 import html
 from pyecharts.commons.utils import JsCode
 from pyecharts.globals import ThemeType
 
-# ─── Page config ───────────────────────────────────────────
+from utils.sidebar import render_nav
+
 st.set_page_config(
     page_title="PTSO Dashboard",
     page_icon="🏔️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+render_nav()
 
 # ─── GLOBAL CSS ─────────────────────────────────────────────
 st.markdown(
@@ -149,7 +152,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── SIDEBAR LOGO & FILTERS ────────────────────────────
-st.sidebar.image(logo_path, width=200)
+
 
 # Pre-fetch options
 target_season = "2024/2025"
