@@ -57,7 +57,12 @@ WITH
         ELSE
           CONCAT((EXTRACT(YEAR FROM u.created_at)::INT - 1), '/', EXTRACT(YEAR FROM u.created_at)::INT)
       END AS season,
-      COUNT(*) AS skiers
+      -- Count total skiers:
+      COUNT(*) AS skiers,
+      -- Count male ski ers only:
+      COUNT(*) FILTER (WHERE lower(u.gender) = 'male')   AS male_skiers,
+      -- Count female ski ers only:
+      COUNT(*) FILTER (WHERE lower(u.gender) = 'female') AS female_skiers
     FROM users u
     WHERE u.role    = 'skier'
       AND u.active  IS TRUE
@@ -117,6 +122,9 @@ SELECT
   COALESCE(co.coaches,  0)     AS coaches,
   COALESCE(pa.parents,   0)    AS parents,
   COALESCE(sk.skiers,    0)    AS skiers,
+  -- New columns for gender breakdown:
+  COALESCE(sk.male_skiers,   0) AS male_skiers,
+  COALESCE(sk.female_skiers, 0) AS female_skiers,
   COALESCE(ct.primary_contact, '')       AS primary_contact,
   COALESCE(ct.primary_contact_email, '') AS primary_contact_email,
   'Active'                     AS status
@@ -136,7 +144,8 @@ ORDER BY su.season, c.name;
 
 def create_view():
     """
-    Execute the DROP + CREATE VIEW for vw_club_summary_by_season
+    Execute the DROP + CREATE VIEW for vw_club_summary_by_season,
+    including male_skiers & female_skiers columns.
     """
     with engine.begin() as conn:
         conn.execute(text(SQL))

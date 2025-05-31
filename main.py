@@ -35,6 +35,12 @@ st.sidebar.page_link(
     label="PTSO Dashboard",
     icon="📊"
 )
+st.sidebar.page_link(
+    "pages/Club Dashboard.py",
+    label="Club Dashboard",
+    icon="📊"
+)
+
 
 # ─── Main content ────────────────────────────────────────
 st.title("🏔️ Strive Dashboard")

@@ -19,3 +19,8 @@ def render_nav():
         label="PTSO Dashboard",
         icon="📊"
     )
+    st.sidebar.page_link(
+        "pages/Club Dashboard.py",
+        label="Club Dashboard",
+        icon="📊"
+    )

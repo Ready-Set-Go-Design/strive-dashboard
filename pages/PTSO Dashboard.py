@@ -291,36 +291,40 @@ st.markdown(f"""
 
 from pyecharts.options import DataZoomOpts
 
-# ─── Dynamic Skier‐Count Bar Chart (all items) ───────────────────
+# ─── Dynamic Skier‐Count Bar Chart (all items, broken down by gender) ───────────────────
 if len(ptso_sel) == 1:
-    # single province → list every club in that province
+    # single province → list every club in that province, with male/female/NA breakdown
     province = ptso_sel[0]
     sql_chart = """
     SELECT
-      club_name      AS label,
-      SUM(skiers)    AS value
+      club_name                                                   AS label,
+      SUM(male_skiers)                                            AS male_count,
+      SUM(female_skiers)                                          AS female_count,
+      SUM(skiers) - SUM(male_skiers) - SUM(female_skiers)         AS na_count
     FROM public.vw_club_summary_by_season
     WHERE season = %(season)s
       AND ptso   = %(province)s
       AND status = ANY(%(status)s)
     GROUP BY club_name
-    ORDER BY value DESC;
+    ORDER BY SUM(skiers) DESC;
     """
     params = {"season": season, "province": province, "status": status_sel}
-    title  = f"All Clubs in {province} by Skier Count"
+    title  = f"All Clubs in {province} by Skier Count (Gender Breakdown)"
 else:
-    # multiple/all provinces → list every province
+    # multiple/all provinces → list every province, with male/female/NA breakdown
     sql_chart = """
     SELECT
-      ptso            AS label,
-      SUM(skiers)     AS value
+      ptso                                                        AS label,
+      SUM(male_skiers)                                            AS male_count,
+      SUM(female_skiers)                                          AS female_count,
+      SUM(skiers) - SUM(male_skiers) - SUM(female_skiers)         AS na_count
     FROM public.vw_club_summary_by_season
     WHERE season    = %(season)s
       AND ptso      = ANY(%(ptso)s)
       AND status    = ANY(%(status)s)
       AND club_name = ANY(%(names)s)
     GROUP BY ptso
-    ORDER BY value DESC;
+    ORDER BY SUM(skiers) DESC;
     """
     params = {"season": season, "ptso": ptso_sel, "status": status_sel, "names": club_sel}
     title  = "All Provinces by Skier Count"
@@ -329,19 +333,31 @@ df_chart = pd.read_sql(sql_chart, engine, params=params)
 
 st.subheader(title)
 if not df_chart.empty:
+    # Extract x-axis labels and three separate lists for male, female, and NA counts
+    labels     = df_chart["label"].tolist()
+    male_vals  = df_chart["male_count"].tolist()
+    female_vals= df_chart["female_count"].tolist()
+    na_vals    = df_chart["na_count"].tolist()
+
     bar = (
         Bar(init_opts=opts.InitOpts(width="100%", height="600px", bg_color="#111111"))
-        .add_xaxis(df_chart["label"].tolist())
-        .add_yaxis("Skiers",    df_chart["value"].tolist(), category_gap="30%")
+        .add_xaxis(labels)
+        # Stack all three series so each bar is broken down by gender
+        .add_yaxis("Male",   male_vals,   stack="total", category_gap="30%")
+        .add_yaxis("Female", female_vals, stack="total")
+        .add_yaxis("NA",     na_vals,     stack="total")
         .reversal_axis()
-        .set_series_opts(label_opts=opts.LabelOpts(position="right", color="#ffffff"))
+        .set_series_opts(
+            label_opts=opts.LabelOpts(position="right", color="#ffffff")
+        )
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
             yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
             toolbox_opts=opts.ToolboxOpts(feature={
                 "saveAsImage": {"title": "Save"},
                 "restore":     {"title": "Reset"}
-            })
+            }),
+            legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff"))
         )
     )
     html(bar.render_embed(), height=600, scrolling=False)
