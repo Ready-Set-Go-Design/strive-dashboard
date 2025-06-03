@@ -291,9 +291,11 @@ st.markdown(f"""
 
 from pyecharts.options import DataZoomOpts
 
+from pyecharts.commons.utils import JsCode
+from pyecharts.options import DataZoomOpts
+
 # ─── Dynamic Skier‐Count Bar Chart (all items, broken down by gender) ───────────────────
 if len(ptso_sel) == 1:
-    # single province → list every club in that province, with male/female/NA breakdown
     province = ptso_sel[0]
     sql_chart = """
     SELECT
@@ -311,7 +313,6 @@ if len(ptso_sel) == 1:
     params = {"season": season, "province": province, "status": status_sel}
     title  = f"All Clubs in {province} by Skier Count (Gender Breakdown)"
 else:
-    # multiple/all provinces → list every province, with male/female/NA breakdown
     sql_chart = """
     SELECT
       ptso                                                        AS label,
@@ -333,26 +334,45 @@ df_chart = pd.read_sql(sql_chart, engine, params=params)
 
 st.subheader(title)
 if not df_chart.empty:
-    # Extract x-axis labels and three separate lists for male, female, and NA counts
-    labels     = df_chart["label"].tolist()
-    male_vals  = df_chart["male_count"].tolist()
-    female_vals= df_chart["female_count"].tolist()
-    na_vals    = df_chart["na_count"].tolist()
+    labels      = df_chart["label"].tolist()
+    male_vals   = df_chart["male_count"].tolist()
+    female_vals = df_chart["female_count"].tolist()
+    na_vals     = df_chart["na_count"].tolist()
+
+    # Compute dynamic height: 25px per label, minimum 600px
+    chart_height_px = max(600, len(labels) * 25)
 
     bar = (
-        Bar(init_opts=opts.InitOpts(width="100%", height="600px", bg_color="#111111"))
+        Bar(
+            init_opts=opts.InitOpts(
+                width="100%",
+                height=f"{chart_height_px}px",
+                bg_color="#111111"
+            )
+        )
         .add_xaxis(labels)
-        # Stack all three series so each bar is broken down by gender
         .add_yaxis("Male",   male_vals,   stack="total", category_gap="30%")
         .add_yaxis("Female", female_vals, stack="total")
         .add_yaxis("NA",     na_vals,     stack="total")
         .reversal_axis()
         .set_series_opts(
-            label_opts=opts.LabelOpts(position="right", color="#ffffff")
+            label_opts=opts.LabelOpts(
+                position="right",
+                color="#ffffff",
+                formatter=JsCode(
+                    """
+                    function(params) {
+                        return params.value > 10 ? params.value : '';
+                    }
+                    """
+                )
+            )
         )
         .set_global_opts(
+            yaxis_opts=opts.AxisOpts(
+                axislabel_opts=opts.LabelOpts(color="#ffffff", interval=0)
+            ),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-            yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
             toolbox_opts=opts.ToolboxOpts(feature={
                 "saveAsImage": {"title": "Save"},
                 "restore":     {"title": "Reset"}
@@ -360,14 +380,16 @@ if not df_chart.empty:
             legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff"))
         )
     )
-    html(bar.render_embed(), height=600, scrolling=False)
+    # Inject grid margins so y‐axis labels aren’t cut off:
+    bar.options["grid"] = {"left": "15%", "right": "5%", "containLabel": True}
+
+    html(bar.render_embed(), height=chart_height_px, scrolling=False)
 else:
     st.info("No data to display for the current selection.")
 
 
 # ─── Total Evaluations by Province/Club ───────────────────────────
 if len(ptso_sel) == 1:
-    # single province -> show total evaluations per club
     province = ptso_sel[0]
     sql_eval_chart = """
     SELECT
@@ -383,10 +405,9 @@ if len(ptso_sel) == 1:
     params = {"season": season, "province": province, "status": status_sel}
     title = f"Total Evaluations by Club in {province}"
 else:
-    # multiple/all provinces -> show total evaluations per province
     sql_eval_chart = """
     SELECT
-      ptso          AS label,
+      ptso                       AS label,
       SUM(evaluations_completed) AS value
     FROM public.vw_national_summary_by_season
     WHERE season    = %(season)s
@@ -403,26 +424,60 @@ _df_eval_chart = pd.read_sql(sql_eval_chart, engine, params=params)
 
 st.subheader(title)
 if not _df_eval_chart.empty:
+    labels_eval = _df_eval_chart["label"].tolist()
+    values_eval = _df_eval_chart["value"].tolist()
+
+    # Compute dynamic height for this chart as well:
+    chart2_height_px = max(600, len(labels_eval) * 25)
+
     bar_eval = (
-        Bar(init_opts=opts.InitOpts(width="80%", height="600px", theme=ThemeType.LIGHT))
-        .add_xaxis(_df_eval_chart["label"].tolist())
-        .add_yaxis("Evaluations", _df_eval_chart["value"].tolist(), category_gap="30%")
+        Bar(
+            init_opts=opts.InitOpts(
+                width="80%",
+                height=f"{chart2_height_px}px",
+                theme=ThemeType.LIGHT
+            )
+        )
+        .add_xaxis(labels_eval)
+        .add_yaxis(
+            "Evaluations",
+            values_eval,
+            category_gap="30%",
+        )
         .reversal_axis()
-        .set_series_opts(label_opts=opts.LabelOpts(position="insideRight", formatter="{c}"))
+        .set_series_opts(
+            label_opts=opts.LabelOpts(
+                position="insideRight",
+                formatter=JsCode(
+                    """
+                    function(params) {
+                        return params.value > 10 ? params.value : '';
+                    }
+                    """
+                )
+            )
+        )
         .set_global_opts(
-      
+            yaxis_opts=opts.AxisOpts(
+                axislabel_opts=opts.LabelOpts(color="#FFFFFF", interval=0)
+            ),
+            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#FFFFFF")),
             tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"),
-            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-            yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
             toolbox_opts=opts.ToolboxOpts(feature={
                 "saveAsImage": {"title": "Save"},
                 "restore":     {"title": "Reset"}
             })
         )
     )
-    html(bar_eval.render_embed(), height=600, scrolling=False)
+    # Inject grid margins so y‐axis labels aren’t cut off:
+    bar_eval.options["grid"] = {"left": "15%", "right": "5%", "containLabel": True}
+
+    html(bar_eval.render_embed(), height=chart2_height_px, scrolling=False)
 else:
     st.info("No evaluation data to display for the current selection.")
+
+
+
 
 # ─── Pass-Rate % by Level ─────────────────────────────────────
 st.subheader("Pass-Rate % by Level")

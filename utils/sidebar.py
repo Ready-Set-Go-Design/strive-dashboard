@@ -22,5 +22,5 @@ def render_nav():
     st.sidebar.page_link(
         "pages/Club Dashboard.py",
         label="Club Dashboard",
-        icon="📊"
+        icon="⛷️"
     )

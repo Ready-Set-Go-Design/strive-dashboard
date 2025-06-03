@@ -170,12 +170,8 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ─── 2) Age‐Group Distribution ─────────────────────────────────────────────────────────
+# ─── 2) Age‐Group Distribution (Granular 4–18, plus <4, >18, Unknown) ───────────────────
 st.subheader("Age-Group Distribution")
-
-# We compute age via (current year - yearofbirth) and bucket into categories.
-# Because PostgreSQL won’t let us ORDER BY an alias at the same select level,
-# we wrap the CASE aggregation in a subquery and then order in the outer SELECT.
 
 sql_age = """
 SELECT
@@ -185,11 +181,10 @@ FROM (
   SELECT
     CASE
       WHEN u.yearofbirth IS NULL THEN 'Unknown'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) < 18 THEN '<18'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 18 AND 25 THEN '18-25'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 26 AND 35 THEN '26-35'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 36 AND 50 THEN '36-50'
-      ELSE '50+'
+      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) < 4 THEN '<4'
+      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 4 AND 18 
+        THEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth)::INT::TEXT
+      ELSE '>18'
     END AS age_group,
     COUNT(*) AS count_users
   FROM users u
@@ -201,21 +196,33 @@ FROM (
   GROUP BY
     CASE
       WHEN u.yearofbirth IS NULL THEN 'Unknown'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) < 18 THEN '<18'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 18 AND 25 THEN '18-25'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 26 AND 35 THEN '26-35'
-      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 36 AND 50 THEN '36-50'
-      ELSE '50+'
+      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) < 4 THEN '<4'
+      WHEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth) BETWEEN 4 AND 18 
+        THEN (EXTRACT(YEAR FROM CURRENT_DATE) - u.yearofbirth)::INT::TEXT
+      ELSE '>18'
     END
 ) sub
 ORDER BY
   CASE sub.age_group
-    WHEN '<18' THEN 1
-    WHEN '18-25' THEN 2
-    WHEN '26-35' THEN 3
-    WHEN '36-50' THEN 4
-    WHEN '50+'  THEN 5
-    ELSE 6
+    WHEN 'Unknown' THEN 0
+    WHEN '<4'    THEN 1
+    WHEN '4'     THEN 2
+    WHEN '5'     THEN 3
+    WHEN '6'     THEN 4
+    WHEN '7'     THEN 5
+    WHEN '8'     THEN 6
+    WHEN '9'     THEN 7
+    WHEN '10'    THEN 8
+    WHEN '11'    THEN 9
+    WHEN '12'    THEN 10
+    WHEN '13'    THEN 11
+    WHEN '14'    THEN 12
+    WHEN '15'    THEN 13
+    WHEN '16'    THEN 14
+    WHEN '17'    THEN 15
+    WHEN '18'    THEN 16
+    WHEN '>18'   THEN 17
+    ELSE 18
   END;
 """
 
@@ -224,18 +231,31 @@ df_age = pd.read_sql(sql_age, engine, params={"club_name": club_choice})
 if df_age.empty:
     st.info("No age data for this club.")
 else:
+    labels = df_age["age_group"].tolist()
+    values = df_age["count_users"].tolist()
+
     bar_age = (
-        Bar(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
-        .add_xaxis(df_age["age_group"].tolist())
-        .add_yaxis("Number of Skiers", df_age["count_users"].tolist(), category_gap="25%")
+        Bar(init_opts=opts.InitOpts(width="100%", height="500px", bg_color="#111111"))
+        .add_xaxis(labels)
+        .add_yaxis(
+            "Number of Skiers",
+            values,
+            category_gap="25%",
+            label_opts=opts.LabelOpts(
+                color="#ffffff",
+                formatter=JsCode(
+                    """
+                    function(params) {
+                        return params.value > 5 ? params.value : '';
+                    }
+                    """
+                )
+            )
+        )
         .set_global_opts(
-            title_opts=opts.TitleOpts(
-                title="Age Groups",
-                pos_left="center",
-                title_textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-            ),
+         
             xaxis_opts=opts.AxisOpts(
-                axislabel_opts=opts.LabelOpts(color="#ffffff")
+                axislabel_opts=opts.LabelOpts(color="#ffffff", rotate=45)
             ),
             yaxis_opts=opts.AxisOpts(
                 axislabel_opts=opts.LabelOpts(color="#ffffff")
@@ -243,106 +263,11 @@ else:
             toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {}, "restore": {}}),
             legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff"))
         )
-        .set_series_opts(label_opts=opts.LabelOpts(color="#ffffff"))
     )
-    html(bar_age.render_embed(), height=400, scrolling=False)
+    html(bar_age.render_embed(), height=500, scrolling=False)
 
 
-# ─── 3) Device‐Platform Breakdown ───────────────────────────────────────────────────────
-st.subheader("Device Platform Breakdown")
 
-sql_device = """
-SELECT
-  COALESCE(u.device_platform, 'Unknown') AS platform,
-  COUNT(*) AS count_users
-FROM users u
-WHERE u.club_id = (
-    SELECT id FROM clubs WHERE name = %(club_name)s
-  )
-  AND u.active IS TRUE
-  AND u.role = 'skier'
-GROUP BY platform
-ORDER BY count_users DESC;
-"""
-df_device = pd.read_sql(sql_device, engine, params={"club_name": club_choice})
-
-if df_device.empty:
-    st.info("No device‐platform data for this club.")
-else:
-    pie_device = (
-        Pie(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
-        .add(
-            "",
-            df_device[["platform", "count_users"]].values.tolist(),
-            radius=["30%", "65%"],
-            center=["50%", "50%"],
-            rosetype="none"
-        )
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title="Devices Used by Skiers", pos_left="center", title_textstyle_opts=opts.TextStyleOpts(color="#ffffff")),
-            legend_opts=opts.LegendOpts(
-                orient="vertical", pos_left="left",
-                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-            ),
-            toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {}, "restore": {}})
-        )
-        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
-    )
-    html(pie_device.render_embed(), height=400, scrolling=False)
-
-
-# ─── 4) Verification Rate (Verified vs. Unverified) ─────────────────────────────────────
-st.subheader("Verification Rate (%)")
-
-sql_verify = """
-SELECT
-  SUM(CASE WHEN u.verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified,
-  SUM(CASE WHEN u.verified_at IS NULL THEN 1 ELSE 0 END)   AS unverified
-FROM users u
-WHERE u.club_id = (
-    SELECT id FROM clubs WHERE name = %(club_name)s
-  )
-  AND u.active IS TRUE
-  AND u.role = 'skier';
-"""
-df_verify = pd.read_sql(sql_verify, engine, params={"club_name": club_choice})
-
-if df_verify.empty:
-    st.info("No verification data for this club.")
-else:
-    verified_count   = int(df_verify.at[0, "verified"])
-    unverified_count = int(df_verify.at[0, "unverified"])
-    total_users      = verified_count + unverified_count
-
-    # Prepare pie slices
-    data_verify = [
-        ("Verified", verified_count),
-        ("Unverified", unverified_count)
-    ]
-
-    pie_verify = (
-        Pie(init_opts=opts.InitOpts(width="100%", height="300px", bg_color="#111111"))
-        .add(
-            "Verification",
-            data_verify,
-            radius=["40%", "65%"],
-            center=["50%", "50%"]
-        )
-        .set_global_opts(
-            title_opts=opts.TitleOpts(
-                title=f"Verified: {verified_count / max(total_users,1) * 100:.1f}%",
-                pos_left="center",
-                title_textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-            ),
-            legend_opts=opts.LegendOpts(
-                orient="vertical", pos_left="left",
-                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-            ),
-            toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {}, "restore": {}})
-        )
-        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
-    )
-    html(pie_verify.render_embed(), height=300, scrolling=False)
 
 
 # ─── 5) Task Pass/Fail Rate ──────────────────────────────────────────────────────────────
@@ -594,65 +519,71 @@ else:
     )
     html(pie_pass.render_embed(), height=400, scrolling=False)
 
-# Club Details Table
-sql_clubs = """
-SELECT 
-  cs.club_id        AS club_id, 
-  cs.club_name      AS club_name,
-  cs.coaches        AS coaches,
-  cs.parents        AS parents,
-  cs.skiers         AS skiers,
-  cs.male_skiers    AS male_skiers,
-  cs.female_skiers  AS female_skiers,
-  (cs.skiers - cs.male_skiers - cs.female_skiers) AS na_skiers,
-  ns.evaluations_completed AS evaluations_completed,
-  ns.drills_shared         AS drills_shared,
-  cs.ptso           AS ptso, 
-  'Active'          AS status
-FROM public.vw_club_summary_by_season cs
-LEFT JOIN public.vw_national_summary_by_season ns
-  ON cs.club_id = ns.club_id 
- AND cs.season  = ns.season
-WHERE 
-  cs.season    = %(season)s 
-  AND cs.club_name = %(club_name)s
-ORDER BY cs.club_name;
+# ─── Skiers list for the selected club ─────────────────────────────────────────────────
+st.subheader("Skiers in This Club")
+
+sql_skiers = """
+SELECT
+  u.id                         AS skier_id,
+  u.firstname                  AS first_name,
+  u.lastname                   AS last_name,
+  u.email                      AS email,
+  u.yearofbirth                AS year_of_birth,
+  COALESCE(u.gender, 'Unknown')        AS gender,
+  COALESCE(u.device_platform, 'Unknown') AS device_platform,
+  COALESCE(u.locale, 'Unknown')          AS locale,
+  CASE WHEN u.verified_at IS NOT NULL THEN 'Yes' ELSE 'No' END AS verified,
+  u.created_at                 AS joined_at,
+  u.last_login                 AS last_login,
+  CASE WHEN u.active IS TRUE THEN 'Active' ELSE 'Inactive' END AS active_status,
+  COALESCE(l.name, 'Level ' || u.current_level::text) AS current_level
+FROM users u
+JOIN clubs c
+  ON u.club_id = c.id
+LEFT JOIN levels l
+  ON l.id = u.current_level
+WHERE
+  c.name   = %(club_name)s
+  AND u.role   = 'skier'
+ORDER BY
+  u.lastname, u.firstname;
 """
-_df_clubs = pd.read_sql(
-    sql_clubs,
+
+df_skiers = pd.read_sql(
+    sql_skiers,
     engine,
-    params={"season": target_season, "club_name": club_choice}
+    params={"club_name": club_choice}
 )
 
-st.subheader("Club Details")
-if _df_clubs.empty:
-    st.info("No club details found.")
+if df_skiers.empty:
+    st.info("No skiers found for this club.")
 else:
-    df_display = (
-        _df_clubs.rename(columns={
-            "club_id": "ID",
-            "club_name": "Name",
-            "coaches": "Coaches",
-            "parents": "Parents",
-            "skiers": "Total Skiers",
-            "male_skiers": "Male Skiers",
-            "female_skiers": "Female Skiers",
-            "na_skiers": "Unspecified Gender",
-            "evaluations_completed": "Evaluations",
-            "drills_shared": "Drills Shared",
-            "ptso": "PTSO",
-            "status": "Status"
+    df_skiers_display = (
+        df_skiers.rename(columns={
+            "skier_id": "ID",
+            "first_name": "First Name",
+            "last_name": "Last Name",
+            "email": "Email",
+            "year_of_birth": "Year of Birth",
+            "gender": "Gender",
+            "device_platform": "Device",
+            "locale": "Locale",
+            "verified": "Verified?",
+            "joined_at": "Joined At",
+            "last_login": "Last Login",
+            "active_status": "Active Status",
+            "current_level": "Current Level"
         })
         .set_index("ID")
     )
 
     btn_col, _ = st.columns([1, 8])
     with btn_col:
-        csv = df_display.reset_index().to_csv(index=False).encode("utf-8")
+        csv = df_skiers_display.reset_index().to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="📥 Download CSV",
+            label="📥 Download Skiers CSV",
             data=csv,
-            file_name=f"club_{club_choice.replace(' ', '_')}_{target_season.replace('/', '-')}.csv",
+            file_name=f"skiers_{club_choice.replace(' ', '_')}.csv",
             mime="text/csv",
             use_container_width=False
         )
@@ -665,14 +596,14 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-    gb = GridOptionsBuilder.from_dataframe(df_display)
+    gb = GridOptionsBuilder.from_dataframe(df_skiers_display)
     gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
     gb.configure_grid_options(domLayout="autoHeight")
     grid_options = gb.build()
 
     AgGrid(
-        df_display,
+        df_skiers_display,
         gridOptions=grid_options,
         theme="streamlit",
         fit_columns_on_grid_load=True
