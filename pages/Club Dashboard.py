@@ -270,127 +270,74 @@ else:
 
 
 
-# ─── 5) Task Pass/Fail Rate ──────────────────────────────────────────────────────────────
-st.subheader("Task Pass/Fail Rate")
+# ─── 5) Current Level Distribution (Horizontal Bar Chart) ─────────────────────────────────
+st.subheader("Current Level Distribution")
 
-# Use COALESCE in SQL so that passed_count/failed_count are never NULL.
-sql_tasks = """
+sql_current_level = """
 SELECT
-  COALESCE(SUM(CASE WHEN ut.passed IS TRUE THEN 1 ELSE 0 END), 0)  AS passed_count,
-  COALESCE(SUM(CASE WHEN ut.passed IS FALSE THEN 1 ELSE 0 END), 0) AS failed_count
-FROM user_tasks ut
-JOIN users u ON u.id = ut.user_id
-WHERE u.club_id = (
-    SELECT id FROM clubs WHERE name = %(club_name)s
-  )
-  AND u.role = 'skier';
+  u.current_level    AS level_id,
+  COALESCE(l.name, 'Level ' || u.current_level::TEXT) AS level_name,
+  COUNT(*)           AS num_skiers
+FROM users u
+LEFT JOIN levels l
+  ON u.current_level = l.id
+WHERE
+  u.club_id = (SELECT id FROM clubs WHERE name = %(club_name)s)
+  AND u.role   = 'skier'
+  AND u.active IS TRUE
+GROUP BY
+  u.current_level,
+  level_name
+ORDER BY
+  u.current_level;
 """
-df_tasks = pd.read_sql(sql_tasks, engine, params={"club_name": club_choice})
 
-# Now df_tasks.at[0, "passed_count"] and "failed_count" will always be an integer (never None).
-passed_count = int(df_tasks.at[0, "passed_count"])
-failed_count = int(df_tasks.at[0, "failed_count"])
-total_tasks  = passed_count + failed_count
-
-# If total_tasks is 0, adjust to avoid division by zero
-data_tasks = [
-    ("Passed" if total_tasks>0 else "Passed", passed_count),
-    ("Failed" if total_tasks>0 else "Failed", failed_count)
-]
-
-pie_tasks = (
-    Pie(init_opts=opts.InitOpts(width="100%", height="300px", bg_color="#111111"))
-    .add(
-        "Tasks",
-        data_tasks,
-        radius=["40%", "65%"],
-        center=["50%", "50%"]
-    )
-    .set_global_opts(
-        title_opts=opts.TitleOpts(
-            title=f"Pass Rate: { (passed_count / total_tasks * 100):.1f}%"
-                  if total_tasks > 0 else "Pass Rate: N/A",
-            pos_left="center",
-            title_textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-        ),
-        legend_opts=opts.LegendOpts(
-            orient="vertical", pos_left="left",
-            textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-        ),
-        toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {}, "restore": {}})
-    )
-    .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
+df_current = pd.read_sql(
+    sql_current_level,
+    engine,
+    params={"club_name": club_choice}
 )
-html(pie_tasks.render_embed(), height=300, scrolling=False)
 
-
-# ─── 6) Notification Volume Over Time (Last 6 Months) ─────────────────────────────────
-st.subheader("Notification Volume (Last 6 Months)")
-
-sql_notifications = """
-SELECT
-  date_trunc('month', created_at)::date AS month,
-  COUNT(*) AS notif_count
-FROM user_notifications un
-WHERE un.recipient_id IN (
-    SELECT id FROM users WHERE club_id = (
-      SELECT id FROM clubs WHERE name = %(club_name)s
-    )
-  )
-  AND created_at >= (CURRENT_DATE - INTERVAL '6 months')
-GROUP BY 1
-ORDER BY 1;
-"""
-df_notifs = pd.read_sql(sql_notifications, engine, params={"club_name": club_choice})
-
-if df_notifs.empty:
-    st.info("No notification data for this club in the last 6 months.")
+if df_current.empty:
+    st.info("No current-level data for this club.")
 else:
-    # Ensure 'month' is a datetime type
-    df_notifs["month"] = pd.to_datetime(df_notifs["month"])
+    levels = df_current["level_name"].tolist()
+    counts = df_current["num_skiers"].tolist()
 
-    # Create a string column for formatting as YYYY-MM
-    df_notifs["month_str"] = df_notifs["month"].dt.strftime("%Y-%m")
-
-    line_notif = (
-        Line(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
-        .add_xaxis(df_notifs["month_str"].tolist())
-        .add_yaxis("Notifications", df_notifs["notif_count"].tolist(), label_opts=opts.LabelOpts(is_show=False))
+    bar_current = (
+        Bar(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
+        .add_xaxis(levels)
+        .add_yaxis(
+            "Skiers",
+            counts,
+            category_gap="35%",
+            label_opts=opts.LabelOpts(color="#ffffff", position="insideRight")
+        )
+        .reversal_axis()  # horizontal bars
         .set_global_opts(
-            title_opts=opts.TitleOpts(
-                title="Notifications over Last 6 Months",
-                pos_left="center",
-                title_textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-            ),
+         
             xaxis_opts=opts.AxisOpts(
-                type_="category",
                 axislabel_opts=opts.LabelOpts(color="#ffffff")
             ),
             yaxis_opts=opts.AxisOpts(
-                axislabel_opts=opts.LabelOpts(color="#ffffff")
+                axislabel_opts=opts.LabelOpts(color="#ffffff", interval=0)
             ),
-            tooltip_opts=opts.TooltipOpts(trigger="axis"),
             toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {}, "restore": {}}),
             legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff"))
         )
-        .set_series_opts(linestyle_opts=opts.LineStyleOpts(width=3), label_opts=opts.LabelOpts(color="#ffffff"))
     )
-    html(line_notif.render_embed(), height=400, scrolling=False)
+    # make sure long level names are fully visible
+    bar_current.options["grid"] = {"left": "20%", "right": "10%", "containLabel": True}
+
+    html(bar_current.render_embed(), height=400, scrolling=False)
 
 
-# ─── (Existing) Other Sections: Level Distribution / Eval by Level / Pass‐Rate / Club Details ──
-# ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-# Level distribution + evaluation by level:
-sql_level_dist = """
-SELECT level_id, level_name, SUM(skier_count) AS skier_count
-FROM public.vw_skier_level_distribution_by_season
-WHERE season    = %(season)s
-  AND club_name = %(club_name)s
-GROUP BY level_id, level_name
-ORDER BY level_id;
-"""
-df_level_dist = pd.read_sql(sql_level_dist, engine, params={"season": target_season, "club_name": club_choice})
+
+
+# ─── (Updated) Evaluation Passed by Level (Club) ─────────────────────────────────────────
+
+# Only run the “evaluations by level” query and chart; remove the “skier level distribution” section.
 
 sql_eval_dist = """
 SELECT level_id, level_name, SUM(eval_passed) AS eval_count
@@ -400,40 +347,16 @@ WHERE season    = %(season)s
 GROUP BY level_id, level_name
 ORDER BY level_id;
 """
-df_eval_dist = pd.read_sql(sql_eval_dist, engine, params={"season": target_season, "club_name": club_choice})
+df_eval_dist = pd.read_sql(
+    sql_eval_dist,
+    engine,
+    params={"season": target_season, "club_name": club_choice}
+)
 
-raw_ids   = [1,34,35,36,37,38,67,68]
+# Map raw level IDs to display labels and sort order
+raw_ids   = [1, 34, 35, 36, 37, 38, 67, 68]
 order_map = {rid: idx for idx, rid in enumerate(raw_ids, start=1)}
 label_map = {rid: f"Level {idx}" for idx, rid in enumerate(raw_ids, start=1)}
-
-df_level_dist["display_level"] = df_level_dist["level_id"].map(label_map)
-df_level_dist = df_level_dist[df_level_dist["display_level"].notna()]
-
-st.subheader("Skier Level Distribution (Club)")
-if df_level_dist.empty:
-    st.info("No level distribution data for this club.")
-else:
-    pie = (
-        Pie(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
-        .add(
-            "",
-            df_level_dist[["display_level", "skier_count"]].values.tolist(),
-            radius=["40%", "70%"]
-        )
-        .set_global_opts(
-            legend_opts=opts.LegendOpts(
-                orient="vertical",
-                pos_left="left",
-                textstyle_opts=opts.TextStyleOpts(color="#ffffff")
-            ),
-            toolbox_opts=opts.ToolboxOpts(feature={
-                "saveAsImage": {}, "restore": {}, "dataZoom": {},
-                "dataView": {}, "magicType": {}
-            })
-        )
-        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
-    )
-    html(pie.render_embed(), height=400, scrolling=False)
 
 df_eval_dist["display_level"] = df_eval_dist["level_id"].map(label_map)
 df_eval_dist["sort_ord"]      = df_eval_dist["level_id"].map(order_map)
@@ -449,7 +372,12 @@ else:
     bar = (
         Bar(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
         .add_xaxis(df_eval_dist["display_level"].tolist())
-        .add_yaxis("Passed", df_eval_dist["eval_count"].tolist(), category_gap="35%")
+        .add_yaxis(
+            "Passed",
+            df_eval_dist["eval_count"].tolist(),
+            category_gap="35%",
+            label_opts=opts.LabelOpts(color="#ffffff")
+        )
         .set_global_opts(
             yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
@@ -461,9 +389,11 @@ else:
     )
     html(bar.render_embed(), height=400, scrolling=False)
 
-# Pass-Rate % by Level
+
+# ─── Pass-Rate % by Level (Club) ─────────────────────────────────────
 st.subheader("Pass-Rate % by Level (Club)")
-sql_pass_rate = """
+
+sql_pass_rate_club = """
 SELECT
   level_id,
   level_name,
@@ -473,22 +403,29 @@ WHERE season    = %(season)s
   AND club_name = %(club_name)s
 GROUP BY level_id, level_name;
 """
-df_pass = pd.read_sql(
-    sql_pass_rate,
+df_pass_club = pd.read_sql(
+    sql_pass_rate_club,
     engine,
     params={"season": target_season, "club_name": club_choice}
 )
 
-df_pass["display_level"] = df_pass["level_id"].map(label_map)
-df_pass["sort_ord"]      = df_pass["level_id"].map(order_map)
-df_pass = df_pass[df_pass["sort_ord"].notna()].sort_values("sort_ord")
+# Use the exact same raw_ids → display_level mapping as in the PTSo dashboard
+raw_ids   = [1, 34, 35, 36, 37, 38, 67, 68]
+order_map = {rid: idx for idx, rid in enumerate(raw_ids, start=1)}
+label_map = {rid: f"Level {i}" for i, rid in enumerate(raw_ids, start=1)}
 
-if df_pass.empty:
+# Attach sort_ord and display_level exactly as before
+df_pass_club["sort_ord"]      = df_pass_club["level_id"].map(order_map)
+df_pass_club["display_level"] = df_pass_club["level_id"].map(label_map)
+df_pass_club = df_pass_club[df_pass_club["sort_ord"].notna()].sort_values("sort_ord")
+
+if df_pass_club.empty:
     st.info("No pass-rate data for this club.")
 else:
-    data_pairs = list(zip(df_pass["display_level"].tolist(), df_pass["pass_pct"].tolist()))
-    pie_pass = (
-        Pie(init_opts=opts.InitOpts(width="100%", height="400px", bg_color="#111111"))
+    data_pairs = list(zip(df_pass_club["display_level"].tolist(), df_pass_club["pass_pct"].tolist()))
+
+    pie_pass_club = (
+        Pie(init_opts=opts.InitOpts(width="100%", height="600px", bg_color="#111111"))
         .add(
             "Pass %",
             data_pairs,
@@ -498,7 +435,7 @@ else:
             label_opts=opts.LabelOpts(
                 formatter="{b}\n{c} %",
                 position="outside",
-                font_size=12,
+                font_size=14,
                 font_weight="bold",
                 color="#ffffff"
             ),
@@ -507,7 +444,7 @@ else:
             legend_opts=opts.LegendOpts(
                 orient="vertical",
                 pos_left="left",
-                textstyle_opts=opts.TextStyleOpts(color="#ffffff", font_size=12)
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff", font_size=14)
             ),
             toolbox_opts=opts.ToolboxOpts(
                 feature={
@@ -517,7 +454,9 @@ else:
             )
         )
     )
-    html(pie_pass.render_embed(), height=400, scrolling=False)
+
+    html(pie_pass_club.render_embed(), height=600, scrolling=False)
+
 
 # ─── Skiers list for the selected club ─────────────────────────────────────────────────
 st.subheader("Skiers in This Club")
