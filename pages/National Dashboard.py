@@ -7,7 +7,6 @@ import pyecharts.options as opts
 from pyecharts.charts import Pie, Bar
 from streamlit.components.v1 import html
 
-
 from utils.sidebar import render_nav
 
 st.set_page_config(
@@ -23,11 +22,11 @@ render_nav()
 st.markdown(
     """
     <style>
-      /* edge-to-edge layout */
-      .reportview-container .main .block-container {
+      /* give the page enough width so fixed-width charts fit on Cloud */
+      .block-container {
+        max-width: 1400px;
         padding-left: 0 !important;
         padding-right: 0 !important;
-        max-width: 100% !important;
       }
       /* header banner */
       .header-banner {
@@ -85,8 +84,6 @@ ORDER BY club_name;
 """
 names_df = pd.read_sql(nsql_clubs, engine, params={"season": target_season})
 name_options = names_df["club_name"].tolist()
-
-
 
 # Basic filters
 season        = st.sidebar.selectbox("Season", [target_season])
@@ -211,7 +208,7 @@ df_eval = (
     .sort_values("sort_ord")
 )
 
-# ─── 3) Charts (stacked full-width) ────────────────────────
+# ─── 3) Charts (fixed pixel width so Cloud won’t squish) ───
 st.subheader("Skier Level Distribution")
 if df_dist.empty:
     st.info("No level distribution data.")
@@ -219,8 +216,8 @@ else:
     pie = (
         Pie(
             init_opts=opts.InitOpts(
-                width="100%",
-                height="400px",
+                width="1200px",   # ← fixed pixel width
+                height="420px",
                 bg_color="#111111"
             )
         )
@@ -231,7 +228,7 @@ else:
         )
         .set_global_opts(
             legend_opts=opts.LegendOpts(
-                orient="vertical", pos_left="left",
+                orient="horizontal", pos_top="2%",
                 textstyle_opts=opts.TextStyleOpts(color="#ffffff")
             ),
             toolbox_opts=opts.ToolboxOpts(feature={
@@ -241,7 +238,7 @@ else:
         )
         .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
     )
-    html(pie.render_embed(), height=400, scrolling=False)
+    html(pie.render_embed(), height=440, scrolling=False)
 
 st.subheader("Evaluations by Level")
 if df_eval.empty:
@@ -250,8 +247,8 @@ else:
     bar = (
         Bar(
             init_opts=opts.InitOpts(
-                width="100%",
-                height="400px",
+                width="1200px",   # ← fixed pixel width
+                height="420px",
                 bg_color="#111111"
             )
         )
@@ -266,7 +263,7 @@ else:
             })
         )
     )
-    html(bar.render_embed(), height=400, scrolling=False)
+    html(bar.render_embed(), height=440, scrolling=False)
 
 # ─── Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """
@@ -321,15 +318,16 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-gb = GridOptionsBuilder.from_dataframe(df_display)
-gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
-gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
-gb.configure_grid_options(domLayout="autoHeight")
-grid_options = gb.build()
+    # Move AgGrid config inside the block so it only runs when data exists
+    gb = GridOptionsBuilder.from_dataframe(df_display)
+    gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+    gb.configure_grid_options(domLayout="autoHeight")
+    grid_options = gb.build()
 
-AgGrid(
-    df_display,
-    gridOptions=grid_options,
-    theme="streamlit",
-    fit_columns_on_grid_load=True  # no explicit height → autoHeight will size it
-)
+    AgGrid(
+        df_display,
+        gridOptions=grid_options,
+        theme="streamlit",
+        fit_columns_on_grid_load=True  # autoHeight will size it
+    )
