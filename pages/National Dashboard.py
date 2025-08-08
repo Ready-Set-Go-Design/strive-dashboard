@@ -22,7 +22,7 @@ render_nav()
 st.markdown(
     """
     <style>
-      /* give the page enough width so fixed-width charts fit on Cloud */
+      /* widen page container so charts fit */
       .block-container {
         max-width: 1400px;
         padding-left: 0 !important;
@@ -208,24 +208,14 @@ df_eval = (
     .sort_values("sort_ord")
 )
 
-# ─── 3) Charts (fixed pixel width so Cloud won’t squish) ───
+# ─── 3) Charts (fixed px width + iframe width) ───
 st.subheader("Skier Level Distribution")
 if df_dist.empty:
     st.info("No level distribution data.")
 else:
     pie = (
-        Pie(
-            init_opts=opts.InitOpts(
-                width="1200px",   # ← fixed pixel width
-                height="420px",
-                bg_color="#111111"
-            )
-        )
-        .add(
-            "",
-            df_dist[["level_name", "skier_count"]].values.tolist(),
-            radius=["40%", "70%"]
-        )
+        Pie(init_opts=opts.InitOpts(width="1200px", height="420px", bg_color="#111111"))
+        .add("", df_dist[["level_name", "skier_count"]].values.tolist(), radius=["40%", "70%"])
         .set_global_opts(
             legend_opts=opts.LegendOpts(
                 orient="horizontal", pos_top="2%",
@@ -238,20 +228,14 @@ else:
         )
         .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}", color="#ffffff"))
     )
-    html(pie.render_embed(), height=440, scrolling=False)
+    html(pie.render_embed(), width=1200, height=440, scrolling=False)
 
 st.subheader("Evaluations by Level")
 if df_eval.empty:
     st.info("No evaluations data.")
 else:
     bar = (
-        Bar(
-            init_opts=opts.InitOpts(
-                width="1200px",   # ← fixed pixel width
-                height="420px",
-                bg_color="#111111"
-            )
-        )
+        Bar(init_opts=opts.InitOpts(width="1200px", height="420px", bg_color="#111111"))
         .add_xaxis(df_eval["display_level"].tolist())
         .add_yaxis("Evaluations", df_eval["eval_count"].tolist(), category_gap="35%")
         .set_global_opts(
@@ -263,7 +247,7 @@ else:
             })
         )
     )
-    html(bar.render_embed(), height=440, scrolling=False)
+    html(bar.render_embed(), width=1200, height=440, scrolling=False)
 
 # ─── Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """
@@ -318,7 +302,6 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-    # Move AgGrid config inside the block so it only runs when data exists
     gb = GridOptionsBuilder.from_dataframe(df_display)
     gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
@@ -329,5 +312,5 @@ else:
         df_display,
         gridOptions=grid_options,
         theme="streamlit",
-        fit_columns_on_grid_load=True  # autoHeight will size it
+        fit_columns_on_grid_load=True
     )
