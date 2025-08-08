@@ -24,11 +24,11 @@ render_nav()
 st.markdown(
     """
     <style>
-      /* edge-to-edge layout */
-      .reportview-container .main .block-container {
+      /* widen the main container on Cloud so fixed-width charts fit */
+      .block-container {
+        max-width: 1400px;
         padding-left: 0 !important;
         padding-right: 0 !important;
-        max-width: 100% !important;
       }
       /* header banner */
       .header-banner {
@@ -50,34 +50,21 @@ st.markdown(
         margin: 0.3rem 0 0; font-size: 1.8rem !important;
         color: #fafafa; font-weight: bold;
       }
-      /* shrink Streamlit metrics if used */
-      div[data-testid="stMetricValue"] { font-size: 1rem !important; }
-      div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; }
       /* tighter AgGrid */
       .ag-theme-streamlit .ag-cell,
       .ag-theme-streamlit .ag-header-cell-label {
         font-size: 12px !important;
       }
+      /* right-align any direct child chart container (optional) */
+      .chart-container {
+        display: flex; justify-content: flex-end; width: 100%; margin-bottom: 2rem;
+      }
     </style>
     """,
     unsafe_allow_html=True,
 )
-st.markdown(
-    """
-    <style>
-      /* right-align any direct child chart container */
-      .chart-container {
-        display: flex;
-        justify-content: flex-end;
-        width: 100%;
-        margin-bottom: 2rem;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
-# ─── CSS for banner & metric cards ─────────────────────────
+# ─── CSS for banner & metric cards (extra styles) ──────────
 st.markdown("""<style>
 .header-banner {
   display: flex;
@@ -116,22 +103,17 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 
+# ─── Sidebar popover fixes (optional) ──────────────────────
 st.markdown(
     """
     <style>
-      /* 1) Let the sidebar container overflow so nothing inside it clips children */
-      [data-testid="stSidebar"] {
-        overflow: visible !important;
-      }
-
-      /* 2) Pull every BaseWeb popover out of the sidebar's stacking context
-            and force it to the right edge of the viewport */
+      [data-testid="stSidebar"] { overflow: visible !important; }
       .baseui-popover__popper {
         position: fixed !important;
-        left: auto     !important;
-        right: 16px    !important;  /* tweak as needed */
-        top: auto      !important;
-        z-index: 9999  !important;
+        left: auto !important;
+        right: 16px !important;
+        top: auto !important;
+        z-index: 9999 !important;
         transform-origin: top right !important;
       }
     </style>
@@ -152,9 +134,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─── SIDEBAR LOGO & FILTERS ────────────────────────────
-
-
-# Pre-fetch options
 target_season = "2024/2025"
 
 # PTSO options
@@ -192,32 +171,18 @@ ptso_sel = ptso_options   if "All" in ptso_choice   else ptso_choice
 status_sel = status_choices if "All" in status_choice else status_choice
 club_sel = name_options   if "All" in name_choice   else name_choice
 
+# Pills styling for radio
 st.markdown(
     """
     <style>
-    /* lay out the radio buttons in a row */
-    div[role="radiogroup"] {
-      display: flex !important;
-      gap: 1rem !important;
-    }
-    /* make each label look like a pill */
+    div[role="radiogroup"] { display: flex !important; gap: 1rem !important; }
     div[role="radiogroup"] label {
-      background-color: #2E3B4E !important;
-      color: #ffffff !important;
-      padding: 0.4rem 0.8rem !important;
-      border-radius: 20px !important;
-      cursor: pointer !important;
-      font-weight: 500 !important;
-      transition: background-color 0.2s ease !important;
+      background-color: #2E3B4E !important; color: #ffffff !important;
+      padding: 0.4rem 0.8rem !important; border-radius: 20px !important;
+      cursor: pointer !important; font-weight: 500 !important; transition: background-color 0.2s ease !important;
     }
-    /* hide the default dot */
-    div[role="radiogroup"] input[type="radio"] {
-      display: none !important;
-    }
-    /* style the checked pill */
-    div[role="radiogroup"] input[type="radio"]:checked + label {
-      background-color: #009688 !important;
-    }
+    div[role="radiogroup"] input[type="radio"] { display: none !important; }
+    div[role="radiogroup"] input[type="radio"]:checked + label { background-color: #009688 !important; }
     </style>
     """,
     unsafe_allow_html=True
@@ -225,11 +190,7 @@ st.markdown(
 
 # ─── Province selector ──────────────────────────────────
 provinces = ["All"] + ptso_options
-selected_province = st.radio(
-    "Filter by Province", provinces,
-    index=0,
-    horizontal=True
-)
+selected_province = st.radio("Filter by Province", provinces, index=0, horizontal=True)
 if selected_province == "All":
     ptso_sel = ptso_options
 else:
@@ -263,22 +224,18 @@ if df_base.empty:
     st.warning(f"No data found for season {season} with the selected filters.")
     st.stop()
 
-#  ── aggregate totals ───────────────────────────────────────
+# Aggregates
 active_clubs = df_base["club_id"].nunique()
 total_skiers = df_base["skiers"].sum()
-
-#  ── coaches: min / max / mode ─────────────────────────────
 min_coaches  = int(df_base["coaches"].min())
 max_coaches  = int(df_base["coaches"].max())
 mode_coaches = int(df_base["coaches"].mode().iloc[0]) if not df_base["coaches"].mode().empty else 0
-
-#  ── new coach-related metrics ─────────────────────────────
 total_evals           = df_base["evaluations_completed"].sum()
 avg_evals_per_coach   = total_evals / (df_base["coaches"].sum() or 1)
 total_drills          = df_base["drills_shared"].sum()
 avg_drills_per_skier  = total_drills / (total_skiers or 1)
 
-#  ── render updated KPI cards ───────────────────────────────
+# KPI cards
 st.markdown(f"""
 <div class="stats-row">
   <div class="stat-card"><p>Active Clubs</p><h2>{active_clubs:,}</h2></div>
@@ -289,12 +246,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-from pyecharts.options import DataZoomOpts
+from pyecharts.options import DataZoomOpts  # noqa
 
-from pyecharts.commons.utils import JsCode
-from pyecharts.options import DataZoomOpts
-
-# ─── Dynamic Skier‐Count Bar Chart (all items, broken down by gender) ───────────────────
+# ─── Dynamic Skier‐Count Bar Chart (stacked, reversed axis) ───────────────
 if len(ptso_sel) == 1:
     province = ptso_sel[0]
     sql_chart = """
@@ -339,13 +293,13 @@ if not df_chart.empty:
     female_vals = df_chart["female_count"].tolist()
     na_vals     = df_chart["na_count"].tolist()
 
-    # Compute dynamic height: 25px per label, minimum 600px
+    # dynamic height: 25px per label, minimum 600px
     chart_height_px = max(600, len(labels) * 25)
 
     bar = (
         Bar(
             init_opts=opts.InitOpts(
-                width="100%",
+                width="1200px",  # fixed width for Cloud
                 height=f"{chart_height_px}px",
                 bg_color="#111111"
             )
@@ -360,33 +314,21 @@ if not df_chart.empty:
                 position="right",
                 color="#ffffff",
                 formatter=JsCode(
-                    """
-                    function(params) {
-                        return params.value > 10 ? params.value : '';
-                    }
-                    """
+                    "function(p){return p.value>10 ? p.value : ''}"
                 )
             )
         )
         .set_global_opts(
-            yaxis_opts=opts.AxisOpts(
-                axislabel_opts=opts.LabelOpts(color="#ffffff", interval=0)
-            ),
+            yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff", interval=0)),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#ffffff")),
-            toolbox_opts=opts.ToolboxOpts(feature={
-                "saveAsImage": {"title": "Save"},
-                "restore":     {"title": "Reset"}
-            }),
+            toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {"title": "Save"}, "restore": {"title": "Reset"}}),
             legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff"))
         )
     )
-    # Inject grid margins so y‐axis labels aren’t cut off:
     bar.options["grid"] = {"left": "15%", "right": "5%", "containLabel": True}
-
-    html(bar.render_embed(), height=chart_height_px, scrolling=False)
+    html(bar.render_embed(), width=1200, height=chart_height_px, scrolling=False)
 else:
     st.info("No data to display for the current selection.")
-
 
 # ─── Total Evaluations by Province/Club ───────────────────────────
 if len(ptso_sel) == 1:
@@ -427,57 +369,36 @@ if not _df_eval_chart.empty:
     labels_eval = _df_eval_chart["label"].tolist()
     values_eval = _df_eval_chart["value"].tolist()
 
-    # Compute dynamic height for this chart as well:
     chart2_height_px = max(600, len(labels_eval) * 25)
 
     bar_eval = (
         Bar(
             init_opts=opts.InitOpts(
-                width="80%",
+                width="1200px",  # fixed width
                 height=f"{chart2_height_px}px",
                 theme=ThemeType.LIGHT
             )
         )
         .add_xaxis(labels_eval)
-        .add_yaxis(
-            "Evaluations",
-            values_eval,
-            category_gap="30%",
-        )
+        .add_yaxis("Evaluations", values_eval, category_gap="30%")
         .reversal_axis()
         .set_series_opts(
             label_opts=opts.LabelOpts(
                 position="insideRight",
-                formatter=JsCode(
-                    """
-                    function(params) {
-                        return params.value > 10 ? params.value : '';
-                    }
-                    """
-                )
+                formatter=JsCode("function(p){return p.value>10 ? p.value : ''}")
             )
         )
         .set_global_opts(
-            yaxis_opts=opts.AxisOpts(
-                axislabel_opts=opts.LabelOpts(color="#FFFFFF", interval=0)
-            ),
+            yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#FFFFFF", interval=0)),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(color="#FFFFFF")),
             tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"),
-            toolbox_opts=opts.ToolboxOpts(feature={
-                "saveAsImage": {"title": "Save"},
-                "restore":     {"title": "Reset"}
-            })
+            toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {"title": "Save"}, "restore": {"title": "Reset"}})
         )
     )
-    # Inject grid margins so y‐axis labels aren’t cut off:
     bar_eval.options["grid"] = {"left": "15%", "right": "5%", "containLabel": True}
-
-    html(bar_eval.render_embed(), height=chart2_height_px, scrolling=False)
+    html(bar_eval.render_embed(), width=1200, height=chart2_height_px, scrolling=False)
 else:
     st.info("No evaluation data to display for the current selection.")
-
-
-
 
 # ─── Pass-Rate % by Level ─────────────────────────────────────
 st.subheader("Pass-Rate % by Level")
@@ -505,41 +426,32 @@ if _df_pass.empty:
     st.info("No pass-rate data for the selected filters.")
 else:
     data_pairs = list(zip(_df_pass["display_level"].tolist(), _df_pass["pass_pct"].tolist()))
-pie_pass = (
-    Pie(init_opts=opts.InitOpts(width="100%", height="600px"))
-    .add(
-        "Pass %",
-        data_pairs,
-        radius=["15%", "65%"],
-        center=["55%", "50%"],
-        rosetype="radius",
-        label_opts=opts.LabelOpts(
-            formatter="{b}\n{c} %",
-            position="outside",
-            font_size=14,        # ↑ increase font size
-            font_weight="bold",  # ↑ make text bold
-            color="#ffffff"      # ↑ set label color
-        ),
-    )
-    .set_global_opts(
-        legend_opts=opts.LegendOpts(
-            orient="vertical",
-            pos_left="left",
-            textstyle_opts=opts.TextStyleOpts(
-                color="#ffffff",
-                font_size=14      # ↑ increase legend font size too
-            )
-        ),
-        toolbox_opts=opts.ToolboxOpts(
-            feature={
-                "saveAsImage": {"title": "Save"},
-                "restore": {"title": "Reset"},
-            }
+    pie_pass = (
+        Pie(init_opts=opts.InitOpts(width="1200px", height="600px"))
+        .add(
+            "Pass %",
+            data_pairs,
+            radius=["15%", "65%"],
+            center=["55%", "50%"],
+            rosetype="radius",
+            label_opts=opts.LabelOpts(
+                formatter="{b}\n{c} %",
+                position="outside",
+                font_size=14,
+                font_weight="bold",
+                color="#ffffff"
+            ),
+        )
+        .set_global_opts(
+            legend_opts=opts.LegendOpts(
+                orient="vertical",
+                pos_left="left",
+                textstyle_opts=opts.TextStyleOpts(color="#ffffff", font_size=14)
+            ),
+            toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {"title": "Save"}, "restore": {"title": "Reset"}})
         )
     )
-)
-
-html(pie_pass.render_embed(), height=600, scrolling=False)
+    html(pie_pass.render_embed(), width=1200, height=600, scrolling=False)
 
 # ─── User Activity & Retention by Province ─────────────────────
 st.subheader("User Activity & Retention by Province")
@@ -571,15 +483,26 @@ else:
     signups = df_tot["signups"].tolist()
     active  = df_tot["active_users"].tolist()
     line = (
-        Line(init_opts=opts.InitOpts(width="100%", height="500px"))
+        Line(init_opts=opts.InitOpts(width="1200px", height="500px"))
         .add_xaxis(months)
         .add_yaxis("Sign-ups", signups, yaxis_index=0, label_opts=opts.LabelOpts(is_show=False))
-        .extend_axis(yaxis=opts.AxisOpts(name="Active Users", position="right", axislabel_opts=opts.LabelOpts(color="#ffffff"), axisline_opts=opts.AxisLineOpts(linestyle_opts=opts.LineStyleOpts(color="#ffffff"))))
+        .extend_axis(yaxis=opts.AxisOpts(
+            name="Active Users", position="right",
+            axislabel_opts=opts.LabelOpts(color="#ffffff"),
+            axisline_opts=opts.AxisLineOpts(linestyle_opts=opts.LineStyleOpts(color="#ffffff"))
+        ))
         .add_yaxis("Active Users", active, yaxis_index=1, label_opts=opts.LabelOpts(is_show=False))
         .set_series_opts(linestyle_opts=opts.LineStyleOpts(width=3), label_opts=opts.LabelOpts(color="#ffffff"))
-        .set_global_opts(xaxis_opts=opts.AxisOpts(type_="category", axislabel_opts=opts.LabelOpts(color="#ffffff")), yaxis_opts=opts.AxisOpts(name="Sign-ups", axislabel_opts=opts.LabelOpts(color="#ffffff"), axisline_opts=opts.AxisLineOpts(linestyle_opts=opts.LineStyleOpts(color="#ffffff"))), legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff")), tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"), toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {"title": "Save"}, "restore": {"title": "Reset"}}))
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(type_="category", axislabel_opts=opts.LabelOpts(color="#ffffff")),
+            yaxis_opts=opts.AxisOpts(name="Sign-ups", axislabel_opts=opts.LabelOpts(color="#ffffff"),
+                                     axisline_opts=opts.AxisLineOpts(linestyle_opts=opts.LineStyleOpts(color="#ffffff"))),
+            legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(color="#ffffff")),
+            tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="cross"),
+            toolbox_opts=opts.ToolboxOpts(feature={"saveAsImage": {"title": "Save"}, "restore": {"title": "Reset"}})
         )
-    html(line.render_embed(), height=500, scrolling=False)
+    )
+    html(line.render_embed(), width=1200, height=500, scrolling=False)
 
 # ─── Clubs list as interactive AG Grid + CSV download ───
 sql_clubs = """
@@ -628,21 +551,19 @@ else:
 
     st.markdown("""
     <style>
-      .ag-root-wrapper, .ag-theme-streamlit {
-        width: 100% !important;
-      }
+      .ag-root-wrapper, .ag-theme-streamlit { width: 100% !important; }
     </style>
     """, unsafe_allow_html=True)
 
-gb = GridOptionsBuilder.from_dataframe(df_display)
-gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
-gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
-gb.configure_grid_options(domLayout="autoHeight")
-grid_options = gb.build()
+    gb = GridOptionsBuilder.from_dataframe(df_display)
+    gb.configure_default_column(sortable=True, filter=True, resizable=True, flex=1)
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=100)
+    gb.configure_grid_options(domLayout="autoHeight")
+    grid_options = gb.build()
 
-AgGrid(
-    df_display,
-    gridOptions=grid_options,
-    theme="streamlit",
-    fit_columns_on_grid_load=True  # no explicit height → autoHeight will size it
-)
+    AgGrid(
+        df_display,
+        gridOptions=grid_options,
+        theme="streamlit",
+        fit_columns_on_grid_load=True  # autoHeight will size it
+    )
